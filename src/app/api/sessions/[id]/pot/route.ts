@@ -23,7 +23,7 @@ export async function POST(
 
   const body = await request.json();
   const { action, ingredientId } = body as {
-    action: "add" | "dismiss_scramble";
+    action: "add" | "dismiss_scramble" | "grab";
     ingredientId?: string;
   };
 
@@ -44,11 +44,25 @@ export async function POST(
   }
 
   if (action === "grab") {
-    const result = await applyPotGrab(sessionId, auth.clientId);
-    if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: 409 });
+    if (!ingredientId) {
+      return NextResponse.json({ error: "ingredientId required" }, { status: 400 });
     }
-    return NextResponse.json({ ok: true, pot: result.pot, guestId: result.guestId });
+    const result = await applyPotGrab(sessionId, auth.clientId, ingredientId);
+    if (!result.ok) {
+      return NextResponse.json(
+        { error: result.error, tooEarly: result.tooEarly, gone: result.gone, already: result.already },
+        { status: 409 },
+      );
+    }
+    return NextResponse.json({
+      ok: true,
+      pot: result.pot,
+      guestId: result.guestId,
+      quality: result.quality,
+      points: result.points,
+      contested: result.contested,
+      joined: result.joined,
+    });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

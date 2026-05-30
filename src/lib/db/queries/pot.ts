@@ -4,16 +4,29 @@ import { sessions } from "../schema/sessions";
 import type { CustomAgentDraft } from "@/lib/custom-agent";
 import {
   addIngredientToPot,
-  applyPlayerGrab,
+  applyTimedGrab,
   dismissPotScramble,
   emptyPotState,
   normalizePotState,
+  resolveGrabContests,
   tickPotState,
+  type GrabQuality,
   type SessionPotState,
 } from "@/lib/pot-state";
+import { normalizePlayers, recordDrink, recordGrab } from "@/lib/session-players";
+import { GRAB_WIN_LINES } from "@/lib/pot-grab-lines";
+import { buildCharacterMap, grabWindowScale } from "@/lib/character-registry";
 import { guestIdForClient } from "./players";
 import { CHARACTER_MAP, POT_INGREDIENTS } from "@/lib/characters";
 import { addMessage, getSessionById } from "./sessions";
+
+const GRAB_QUALITY_LABEL: Record<GrabQuality, string> = {
+  perfect: "完美",
+  good: "不错",
+  overcooked: "老了",
+  raw: "还没熟",
+  burnt: "糊了",
+};
 
 export async function getSessionPotState(sessionId: number): Promise<SessionPotState> {
   const session = await getSessionById(sessionId);
@@ -39,6 +52,59 @@ export async function tickAndPersistPotState(sessionId: number): Promise<Session
   const before = JSON.stringify(pot);
 
   pot = tickPotState(pot, sessionId, guestIds, customGuests);
+
+  // Resolve any grab contests whose window has elapsed (drink duels).
+  const charMap = buildCharacterMap(customGuests);
+  const drinkingPowerById: Record<string, number> = {};
+  for (const id of guestIds) drinkingPowerById[id] = charMap[id]?.drinkingPower ?? 5;
+
+  const { pot: resolvedPot, resolutions } = resolveGrabContests(
+    pot,
+    guestIds,
+    drinkingPowerById,
+  );
+  pot = resolvedPot;
+
+  if (resolutions.length > 0) {
+    let players = normalizePlayers(session.players);
+    const messages: { guestId: string; content: string }[] = [];
+
+    for (const r of resolutions) {
+      players = recordGrab(players, r.winnerClientId, r.points, r.quality === "perfect", r.duel);
+      if (r.duel && r.loserClientId) {
+        players = recordDrink(players, r.loserClientId);
+      }
+      const ing = POT_INGREDIENTS.find((i) => i.id === r.ingredientId);
+      const wName = charMap[r.winnerGuestId]?.name ?? r.winnerGuestId;
+      const label = GRAB_QUALITY_LABEL[r.quality];
+      if (r.duel && r.loserGuestId) {
+        const lName = charMap[r.loserGuestId]?.name ?? r.loserGuestId;
+        messages.push({
+          guestId: "system",
+          content: `🍶 ${ing?.nameCN ?? "菜"}之争！${wName} vs ${lName} — ${wName} ${label}抢到 +${r.points}分，${lName} 干一杯！`,
+        });
+      } else {
+        const winLines = GRAB_WIN_LINES[r.winnerGuestId];
+        const flavour = winLines?.length
+          ? ` ${winLines[Math.floor(Math.random() * winLines.length)]}`
+          : "";
+        messages.push({
+          guestId: "system",
+          content: `${ing?.emoji ?? "🍲"} ${wName} ${label}抢到${ing?.nameCN ?? "菜"}！+${r.points}分${flavour}`,
+        });
+      }
+    }
+
+    await db
+      .update(sessions)
+      .set({ potState: pot, players, updatedAt: new Date() })
+      .where(eq(sessions.id, sessionId));
+
+    for (const m of messages) {
+      await addMessage(sessionId, m.guestId, m.content, "announcement");
+    }
+    return pot;
+  }
 
   if (JSON.stringify(pot) !== before) {
     await savePotState(sessionId, pot);
@@ -78,9 +144,18 @@ export async function applyPotAddIngredient(
 export async function applyPotGrab(
   sessionId: number,
   clientId: string,
+  ingredientId: string,
 ): Promise<
-  | { ok: true; pot: SessionPotState; guestId: string }
-  | { ok: false; error: string }
+  | {
+      ok: true;
+      pot: SessionPotState;
+      guestId: string;
+      quality: GrabQuality;
+      points: number;
+      contested: boolean;
+      joined: boolean;
+    }
+  | { ok: false; error: string; tooEarly?: boolean; gone?: boolean; already?: boolean }
 > {
   const session = await getSessionById(sessionId);
   if (!session) return { ok: false, error: "Session not found" };
@@ -98,25 +173,42 @@ export async function applyPotGrab(
     (session.customGuests ?? []) as CustomAgentDraft[],
   );
 
-  const updated = applyPlayerGrab(
+  const customs = (session.customGuests ?? []) as CustomAgentDraft[];
+  const result = applyTimedGrab(
     pot,
-    sessionId,
     session.guestIds ?? [],
-    (session.customGuests ?? []) as CustomAgentDraft[],
+    ingredientId,
     guestId,
     clientId,
+    Date.now(),
+    grabWindowScale(guestId, customs),
   );
 
-  if (!updated) {
-    return { ok: false, error: "Not in grab window" };
+  if (!result.ok) {
+    if (result.tooEarly) {
+      return { ok: false, error: "还没熟，等等！", tooEarly: true };
+    }
+    if (result.already) {
+      return { ok: false, error: "你已经出手了，等结算", already: true };
+    }
+    return { ok: false, error: "手慢了，菜没了", gone: true };
   }
 
-  if (updated.scramble?.grabbedByClientId !== clientId) {
-    return { ok: false, error: "Too slow — already grabbed" };
-  }
+  // Points & feed are settled when the contest window resolves (drink duel).
+  await savePotState(sessionId, result.pot);
 
-  await savePotState(sessionId, updated);
-  return { ok: true, pot: updated, guestId };
+  const contested = (result.pot.contests.find((c) => c.ingredientId === ingredientId)?.entries
+    .length ?? 0) > 1;
+
+  return {
+    ok: true,
+    pot: result.pot,
+    guestId,
+    quality: result.quality,
+    points: result.points,
+    contested: contested || Boolean(result.joined),
+    joined: Boolean(result.joined),
+  };
 }
 
 export async function applyPotDismissScramble(sessionId: number): Promise<SessionPotState> {

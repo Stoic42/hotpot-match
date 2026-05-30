@@ -1,12 +1,35 @@
 import { POT_INGREDIENTS } from "@/lib/characters";
 import type { CustomAgentDraft } from "@/lib/custom-agent";
-import { getGrabSpeed } from "@/lib/character-registry";
-import { GRAB_MISS_LINES, GRAB_WIN_LINES } from "@/lib/pot-grab-lines";
 
 export const POT_COUNTDOWN_MS = 700;
 export const POT_COUNTDOWN_TICKS = 3;
 /** Auto-resolve scramble if nobody taps in time */
 export const POT_SCRAMBLE_MS = 2800;
+
+// ── Timing-grab tuning (relative to an ingredient's true ready time) ──
+/** Tapping within this many ms of the ready moment is a "perfect" grab. */
+export const GRAB_PERFECT_WINDOW_MS = 1800;
+/** Up to this many ms after ready still yields an edible "good" grab. */
+export const GRAB_GOOD_LATE_MS = 5000;
+/** Ungrabbed ingredients burn this long after ready (lost for everyone). */
+export const GRAB_BURN_GRACE_MS = 9000;
+
+export const GRAB_POINTS: Record<GrabQuality, number> = {
+  raw: 0,
+  perfect: 12,
+  good: 7,
+  overcooked: 3,
+  burnt: 0,
+};
+
+export type GrabQuality = "raw" | "perfect" | "good" | "overcooked" | "burnt";
+
+export interface GrabJudgment {
+  quality: GrabQuality;
+  points: number;
+  /** Signed ms from ready (negative = early, positive = late). */
+  deltaMs: number;
+}
 
 export interface PotCookingEntry {
   ingredientId: string;
@@ -28,7 +51,26 @@ export interface PotScrambleState {
   grabbedBy: string | null;
   /** Human who tapped 抢 first (maps to grabbedBy guest via session players). */
   grabbedByClientId: string | null;
+  quality?: GrabQuality;
   reactions: PotScrambleReaction[];
+}
+
+/** How long a grabbed ingredient stays "contestable" before it resolves. */
+export const GRAB_CONTEST_MS = 650;
+
+export interface GrabContestEntry {
+  clientId: string;
+  guestId: string;
+  quality: GrabQuality;
+  points: number;
+  deltaMs: number;
+}
+
+export interface GrabContest {
+  ingredientId: string;
+  startedAt: string;
+  resolveAt: string;
+  entries: GrabContestEntry[];
 }
 
 export interface SessionPotState {
@@ -36,10 +78,12 @@ export interface SessionPotState {
   cookedCount: number;
   scramble: PotScrambleState | null;
   hunger: Record<string, number>;
+  /** Ingredients currently being fought over (resolve into a drink duel). */
+  contests: GrabContest[];
 }
 
 export function emptyPotState(): SessionPotState {
-  return { cooking: [], cookedCount: 0, scramble: null, hunger: {} };
+  return { cooking: [], cookedCount: 0, scramble: null, hunger: {}, contests: [] };
 }
 
 export function normalizePotState(raw: unknown): SessionPotState {
@@ -50,203 +94,264 @@ export function normalizePotState(raw: unknown): SessionPotState {
     cookedCount: typeof o.cookedCount === "number" ? o.cookedCount : 0,
     scramble: o.scramble ?? null,
     hunger: o.hunger && typeof o.hunger === "object" ? o.hunger : {},
+    contests: Array.isArray(o.contests) ? o.contests : [],
   };
 }
 
-function seededRandom(seed: string): () => number {
-  let h = 2166136261;
-  for (let i = 0; i < seed.length; i++) {
-    h ^= seed.charCodeAt(i);
-    h = Math.imul(h, 16777619);
+/**
+ * Judge a grab purely by WHEN the player tapped, relative to the hidden
+ * ready time. This is the heart of the memory game: players must recall the
+ * cook time and tap at the right moment without an on-screen timer.
+ */
+export function judgeGrabQuality(
+  elapsedMs: number,
+  cookTimeSeconds: number,
+  windowScale = 1,
+): GrabJudgment {
+  const readyMs = cookTimeSeconds * 1000;
+  const deltaMs = elapsedMs - readyMs;
+  const perfect = GRAB_PERFECT_WINDOW_MS * windowScale;
+  const good = GRAB_GOOD_LATE_MS * windowScale;
+
+  let quality: GrabQuality;
+  if (deltaMs < -perfect) {
+    quality = "raw"; // tapped too early — still bloody
+  } else if (Math.abs(deltaMs) <= perfect) {
+    quality = "perfect";
+  } else if (deltaMs <= good) {
+    quality = "good";
+  } else {
+    quality = "overcooked";
   }
-  return () => {
-    h += 0x6d2b79f5;
-    let t = Math.imul(h ^ (h >>> 15), 1 | h);
-    t ^= t + Math.imul(t ^ (t >>> 7), 61 | t);
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
+
+  return { quality, points: GRAB_POINTS[quality], deltaMs };
 }
 
-function resolveScramble(
+export interface TimedGrabResult {
+  ok: boolean;
+  pot: SessionPotState;
+  quality: GrabQuality;
+  points: number;
+  deltaMs: number;
+  /** This tap opened a fresh contest (you reached first). */
+  contestStarted?: boolean;
+  /** You joined an in-progress contest — a drink duel will decide it. */
+  joined?: boolean;
+  /** Tapped before the ingredient was cooked — no state change, try again. */
+  tooEarly?: boolean;
+  /** Ingredient was already taken or burnt. */
+  gone?: boolean;
+  /** You already have a stake in this contest. */
+  already?: boolean;
+}
+
+/**
+ * Player taps 抢 on a specific cooking ingredient. Timing decides quality.
+ * The first valid tap opens a short contest window; anyone else tapping the
+ * same ingredient before it resolves joins, and a drink duel settles the tie.
+ * Early taps fail without consuming the ingredient.
+ */
+export function applyTimedGrab(
   pot: SessionPotState,
-  sessionId: number,
   guestIds: string[],
-  customGuests: CustomAgentDraft[],
-  forcedWinnerId?: string,
-): SessionPotState {
-  const scramble = pot.scramble;
-  if (!scramble) return pot;
-
-  const ing = POT_INGREDIENTS.find((i) => i.id === scramble.ingredientId);
-  if (!ing) {
-    return { ...pot, scramble: null };
-  }
-
-  const rand = seededRandom(`${sessionId}:${scramble.ingredientId}:${scramble.startedAt}`);
-  const threshold = 0.42;
-
-  let grabbedBy: string | null = forcedWinnerId ?? scramble.grabbedBy ?? null;
-
-  const rolls = guestIds
-    .map((guestId) => {
-      const hungerBoost = Math.min(0.22, (pot.hunger[guestId] ?? 0) / 450);
-      return {
-        guestId,
-        roll: getGrabSpeed(guestId, customGuests) * 0.72 + hungerBoost + rand() * 0.42,
-      };
-    })
-    .sort((a, b) => b.roll - a.roll);
-
-  if (!grabbedBy) {
-    const contenders = rolls.filter((r) => r.roll > threshold);
-    const totalWeight = contenders.reduce((sum, r) => sum + Math.max(0.1, r.roll), 0);
-    let cursor = rand() * totalWeight;
-    for (const contender of contenders) {
-      cursor -= Math.max(0.1, contender.roll);
-      if (cursor <= 0) {
-        grabbedBy = contender.guestId;
-        break;
-      }
-    }
-    grabbedBy ??= contenders[0]?.guestId ?? null;
-  }
-
-  const notable = rolls
-    .filter((r) => r.guestId === grabbedBy || r.roll > threshold * 0.72)
-    .slice(0, Math.min(6, rolls.length));
-
-  const reactions: PotScrambleReaction[] = notable.map((r) => {
-    const isWinner = r.guestId === grabbedBy;
-    const isSlow = !isWinner && r.roll > threshold * 0.8;
-    const speed: PotScrambleReaction["speed"] = isWinner ? "fast" : isSlow ? "slow" : "miss";
-
-    let line: string;
-    if (isWinner) {
-      const pool = GRAB_WIN_LINES[r.guestId] ?? ["Got it!"];
-      line = pool[Math.floor(rand() * pool.length)];
-    } else {
-      line = GRAB_MISS_LINES[r.guestId] ?? "missed it...";
-    }
-    return { guestId: r.guestId, speed, line };
-  });
-
-  const hunger = { ...pot.hunger };
-  if (grabbedBy) {
-    for (const id of guestIds) {
-      if (id !== grabbedBy) {
-        hunger[id] = Math.min(100, (hunger[id] ?? 0) + 15);
-      } else {
-        hunger[id] = Math.max(0, (hunger[id] ?? 0) - 5);
-      }
-    }
-  }
-
-  const cooking = pot.cooking.filter((c) => c.ingredientId !== scramble.ingredientId);
-
-  return {
-    cooking,
-    cookedCount: pot.cookedCount + 1,
-    hunger,
-    scramble: {
-      ...scramble,
-      phase: "result",
-      grabbedBy,
-      grabbedByClientId: scramble.grabbedByClientId,
-      reactions,
-    },
-  };
-}
-
-/** First human tap wins the scramble for their claimed guest. */
-export function applyPlayerGrab(
-  pot: SessionPotState,
-  sessionId: number,
-  guestIds: string[],
-  customGuests: CustomAgentDraft[],
+  ingredientId: string,
   guestId: string,
   clientId: string,
-): SessionPotState | null {
-  const scramble = pot.scramble;
-  if (!scramble || scramble.phase !== "scramble") return null;
-  if (scramble.grabbedBy) return pot;
-
-  const withGrab: SessionPotState = {
-    ...pot,
-    scramble: {
-      ...scramble,
-      grabbedBy: guestId,
-      grabbedByClientId: clientId,
-    },
-  };
-  return resolveScramble(withGrab, sessionId, guestIds, customGuests, guestId);
-}
-
-/** Advance timers & resolve scramble on the server clock. */
-export function tickPotState(
-  pot: SessionPotState,
-  sessionId: number,
-  guestIds: string[],
-  customGuests: CustomAgentDraft[],
   nowMs: number = Date.now(),
-): SessionPotState {
-  let next = normalizePotState(pot);
+  windowScale = 1,
+): TimedGrabResult {
+  const base: TimedGrabResult = {
+    ok: false,
+    pot,
+    quality: "raw",
+    points: 0,
+    deltaMs: 0,
+  };
 
-  if (next.scramble) {
-    const s = next.scramble;
-    const started = new Date(s.startedAt).getTime();
-    const elapsed = nowMs - started;
+  void guestIds;
+  const ing = POT_INGREDIENTS.find((i) => i.id === ingredientId);
+  if (!ing) return { ...base, gone: true };
 
-    if (s.phase === "counting") {
-      if (elapsed >= POT_COUNTDOWN_MS * POT_COUNTDOWN_TICKS) {
-        next = {
-          ...next,
-          scramble: {
-            ...s,
-            phase: "scramble",
-            scrambleAt: new Date(nowMs).toISOString(),
-          },
-        };
-      }
-      return next;
+  // Already an open contest for this ingredient → try to join it.
+  const existing = pot.contests.find((c) => c.ingredientId === ingredientId);
+  if (existing) {
+    if (existing.entries.some((e) => e.clientId === clientId)) {
+      return { ...base, already: true };
     }
-
-    if (s.phase === "scramble") {
-      const scrambleStart = s.scrambleAt ? new Date(s.scrambleAt).getTime() : started;
-      if (nowMs - scrambleStart >= POT_SCRAMBLE_MS) {
-        return resolveScramble(next, sessionId, guestIds, customGuests);
-      }
-      return next;
+    const elapsed = nowMs - new Date(existing.startedAt).getTime();
+    const judgment = judgeGrabQuality(elapsed, ing.cookTimeSeconds, windowScale);
+    if (judgment.quality === "raw") {
+      return { ...base, quality: "raw", deltaMs: judgment.deltaMs, tooEarly: true };
     }
-
-    return next;
+    const contests = pot.contests.map((c) =>
+      c.ingredientId === ingredientId
+        ? {
+            ...c,
+            entries: [
+              ...c.entries,
+              {
+                clientId,
+                guestId,
+                quality: judgment.quality,
+                points: judgment.points,
+                deltaMs: judgment.deltaMs,
+              },
+            ],
+          }
+        : c,
+    );
+    return {
+      ok: true,
+      pot: { ...pot, contests },
+      quality: judgment.quality,
+      points: judgment.points,
+      deltaMs: judgment.deltaMs,
+      joined: true,
+    };
   }
 
-  for (const entry of [...next.cooking]) {
-    if (entry.notified) continue;
+  // No contest yet → must still be cooking and validly timed to open one.
+  const entry = pot.cooking.find((c) => c.ingredientId === ingredientId);
+  if (!entry) return { ...base, gone: true };
+
+  const elapsed = nowMs - new Date(entry.startedAt).getTime();
+  const judgment = judgeGrabQuality(elapsed, ing.cookTimeSeconds, windowScale);
+  if (judgment.quality === "raw") {
+    return { ...base, quality: "raw", deltaMs: judgment.deltaMs, tooEarly: true };
+  }
+
+  const cooking = pot.cooking.filter((c) => c.ingredientId !== ingredientId);
+  const contest: GrabContest = {
+    ingredientId,
+    startedAt: entry.startedAt,
+    resolveAt: new Date(nowMs + GRAB_CONTEST_MS).toISOString(),
+    entries: [
+      {
+        clientId,
+        guestId,
+        quality: judgment.quality,
+        points: judgment.points,
+        deltaMs: judgment.deltaMs,
+      },
+    ],
+  };
+
+  return {
+    ok: true,
+    pot: { ...pot, cooking, contests: [...pot.contests, contest] },
+    quality: judgment.quality,
+    points: judgment.points,
+    deltaMs: judgment.deltaMs,
+    contestStarted: true,
+  };
+}
+
+export interface ContestResolution {
+  ingredientId: string;
+  winnerClientId: string;
+  winnerGuestId: string;
+  quality: GrabQuality;
+  points: number;
+  duel: boolean;
+  loserClientId: string | null;
+  loserGuestId: string | null;
+}
+
+/**
+ * Resolve any contest whose window has elapsed. A single contender just wins.
+ * Two or more triggers a drink duel decided by drinkingPower (+ luck): the
+ * duel winner takes the food, the loser drinks.
+ */
+export function resolveGrabContests(
+  pot: SessionPotState,
+  guestIds: string[],
+  drinkingPowerById: Record<string, number>,
+  nowMs: number = Date.now(),
+): { pot: SessionPotState; resolutions: ContestResolution[] } {
+  const resolutions: ContestResolution[] = [];
+  const remaining: GrabContest[] = [];
+  let cookedCount = pot.cookedCount;
+  const hunger = { ...pot.hunger };
+
+  for (const contest of pot.contests) {
+    if (new Date(contest.resolveAt).getTime() > nowMs) {
+      remaining.push(contest);
+      continue;
+    }
+    if (contest.entries.length === 0) continue;
+
+    const reachers = [...contest.entries].sort(
+      (a, b) => b.points - a.points || Math.abs(a.deltaMs) - Math.abs(b.deltaMs),
+    );
+
+    let winner = reachers[0];
+    let loser: GrabContestEntry | null = null;
+    let duel = false;
+
+    if (reachers.length >= 2) {
+      duel = true;
+      const a = reachers[0];
+      const b = reachers[1];
+      const scoreA = (drinkingPowerById[a.guestId] ?? 5) + Math.random() * 6;
+      const scoreB = (drinkingPowerById[b.guestId] ?? 5) + Math.random() * 6;
+      if (scoreB > scoreA) {
+        winner = b;
+        loser = a;
+      } else {
+        winner = a;
+        loser = b;
+      }
+    }
+
+    cookedCount += 1;
+    for (const id of guestIds) {
+      if (id === winner.guestId) hunger[id] = Math.max(0, (hunger[id] ?? 0) - 5);
+      else hunger[id] = Math.min(100, (hunger[id] ?? 0) + 15);
+    }
+
+    resolutions.push({
+      ingredientId: contest.ingredientId,
+      winnerClientId: winner.clientId,
+      winnerGuestId: winner.guestId,
+      quality: winner.quality,
+      points: winner.points,
+      duel,
+      loserClientId: loser?.clientId ?? null,
+      loserGuestId: loser?.guestId ?? null,
+    });
+  }
+
+  return {
+    pot: { ...pot, contests: remaining, cookedCount, hunger },
+    resolutions,
+  };
+}
+
+/** Advance timers: burn any ingredient nobody grabbed in time. */
+export function tickPotState(
+  pot: SessionPotState,
+  _sessionId: number,
+  _guestIds: string[],
+  _customGuests: CustomAgentDraft[],
+  nowMs: number = Date.now(),
+): SessionPotState {
+  const next = normalizePotState(pot);
+
+  const survivors: PotCookingEntry[] = [];
+  let burnt = false;
+  for (const entry of next.cooking) {
     const ing = POT_INGREDIENTS.find((i) => i.id === entry.ingredientId);
     if (!ing) continue;
     const readyAt = new Date(entry.startedAt).getTime() + ing.cookTimeSeconds * 1000;
-    if (nowMs >= readyAt) {
-      const cooking = next.cooking.map((c) =>
-        c.ingredientId === entry.ingredientId ? { ...c, notified: true } : c,
-      );
-      return {
-        ...next,
-        cooking,
-        scramble: {
-          ingredientId: entry.ingredientId,
-          phase: "counting",
-          startedAt: new Date(nowMs).toISOString(),
-          scrambleAt: null,
-          grabbedBy: null,
-          grabbedByClientId: null,
-          reactions: [],
-        },
-      };
+    if (nowMs > readyAt + GRAB_BURN_GRACE_MS) {
+      burnt = true; // overcooked & abandoned — remove from pot
+      continue;
     }
+    survivors.push(entry);
   }
 
-  return next;
+  if (!burnt) return next;
+  return { ...next, cooking: survivors };
 }
 
 export function addIngredientToPot(

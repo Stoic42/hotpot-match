@@ -30,6 +30,9 @@ export async function GET(
 
   const pot = await tickAndPersistPotState(sessionId);
 
+  // Re-read so just-resolved drink duels reflect in player scores immediately.
+  const fresh = (await getSessionById(sessionId)) ?? session;
+
   const auth = getClientId(request);
   const myGuestId =
     auth.ok ? guestIdForClient(session, auth.clientId) : null;
@@ -38,7 +41,7 @@ export async function GET(
     id: session.id,
     guestIds: session.guestIds,
     customGuests: session.customGuests ?? [],
-    players: normalizePlayers(session.players),
+    players: normalizePlayers(fresh.players),
     rosterLocked: (session.guestIds ?? []).length > 0,
     status: session.status,
     hostClientId: session.userId,

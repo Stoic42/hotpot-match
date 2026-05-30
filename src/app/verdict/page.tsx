@@ -155,6 +155,76 @@ function GuestRow({
   );
 }
 
+interface PlayerScore {
+  clientId: string;
+  displayName: string;
+  guestId: string | null;
+  points?: number;
+  grabWins?: number;
+  perfectGrabs?: number;
+  drinkDuelsWon?: number;
+  drinks?: number;
+}
+
+// ── Player scoreboard (real humans) ──────────────────────────────────────────
+function PlayerScoreboard({
+  players,
+  charMap,
+}: {
+  players: PlayerScore[];
+  charMap: Record<string, { name: string; flag: string; tagline: string }>;
+}) {
+  if (players.length === 0) return null;
+  const medals = ["🥇", "🥈", "🥉"];
+
+  return (
+    <div className="px-6 pb-2">
+      <div className="flex items-center gap-3 mb-4">
+        <div className="flex-1 h-px bg-white/15" />
+        <span className="text-[9px] font-black uppercase tracking-[0.3em] text-[#78716C]">
+          玩家战绩 · Players
+        </span>
+        <div className="flex-1 h-px bg-white/15" />
+      </div>
+      <div className="space-y-2">
+        {players.map((p, i) => {
+          const char = p.guestId ? charMap[p.guestId] ?? CHARACTER_MAP[p.guestId] : null;
+          return (
+            <motion.div
+              key={p.clientId}
+              initial={{ opacity: 0, x: -12 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.5 + i * 0.08 }}
+              className="flex items-center gap-3 rounded-xl border border-white/8 bg-[#191714] px-3 py-2.5"
+            >
+              <span className="text-lg w-6 text-center shrink-0">{medals[i] ?? `${i + 1}`}</span>
+              <div className="w-8 h-8 rounded-full bg-[#221F1C] border border-white/10 flex items-center justify-center text-base shrink-0">
+                {char?.flag ?? "🧑"}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-black text-[#F5F1E8] truncate">
+                  {p.displayName}
+                  {char ? <span className="text-[#78716C] font-medium"> · {char.name}</span> : null}
+                </div>
+                <div className="text-[10px] text-[#A8A29E] flex flex-wrap gap-x-2">
+                  <span>抢到 {p.grabWins ?? 0}</span>
+                  <span>完美 {p.perfectGrabs ?? 0}</span>
+                  <span>拼酒胜 {p.drinkDuelsWon ?? 0}</span>
+                  <span>干杯 {p.drinks ?? 0}🍶</span>
+                </div>
+              </div>
+              <div className="text-right shrink-0">
+                <div className="text-lg font-black text-[#F2A24A] leading-none">{p.points ?? 0}</div>
+                <div className="text-[8px] text-[#78716C] uppercase tracking-widest">pts</div>
+              </div>
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 // ── Main verdict inner ─────────────────────────────────────────────────────────
 function VerdictInner() {
   const router = useRouter();
@@ -174,6 +244,7 @@ function VerdictInner() {
   const [highlightQuote, setHighlightQuote] = useState<string | null>(null);
   const [highlightGuestId, setHighlightGuestId] = useState<string | null>(null);
   const [charMap, setCharMap] = useState<Record<string, { name: string; flag: string; tagline: string }>>({});
+  const [playerScores, setPlayerScores] = useState<PlayerScore[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -206,6 +277,13 @@ function VerdictInner() {
         const customs = (session?.customGuests ?? []) as CustomAgentDraft[];
         const map = buildCharacterMap(customs);
         setCharMap(map);
+
+        const humanPlayers = Array.isArray(session?.players)
+          ? (session.players as PlayerScore[]).filter((p) => p.guestId)
+          : [];
+        setPlayerScores(
+          [...humanPlayers].sort((a, b) => (b.points ?? 0) - (a.points ?? 0)),
+        );
 
         const msgArr = (Array.isArray(msgs) ? msgs : []) as {
           guestId: string;
@@ -364,6 +442,8 @@ function VerdictInner() {
           </div>
         )}
       </div>
+
+      <PlayerScoreboard players={playerScores} charMap={charMap} />
 
       {highlightQuote && (
         <motion.div

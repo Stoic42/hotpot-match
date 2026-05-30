@@ -34,6 +34,28 @@ export function getGrabSpeed(
   return 0.55;
 }
 
+/**
+ * Phase B role identity for grabbing:
+ *  - Fast grabbers ("抢菜狂魔") get a WIDER perfect/late window (forgiving timing).
+ *  - Slow grabbers ("话痨学者") get a NARROWER window but a faint memory hint
+ *    as compensation — they rely on study, not reflexes.
+ */
+export function grabWindowScale(characterId: string, customDrafts: CustomAgentDraft[]): number {
+  const speed = getGrabSpeed(characterId, customDrafts);
+  return 0.6 + speed * 0.9; // ~0.87 (slow) .. ~1.41 (fast)
+}
+
+export function hasMemoryHint(characterId: string, customDrafts: CustomAgentDraft[]): boolean {
+  return getGrabSpeed(characterId, customDrafts) < 0.45;
+}
+
+export function grabRoleLabel(characterId: string, customDrafts: CustomAgentDraft[]): string {
+  const speed = getGrabSpeed(characterId, customDrafts);
+  if (speed >= 0.7) return "手快 · 抢菜狂魔（宽容窗口）";
+  if (speed < 0.45) return "记忆派 · 有熟度提示（窗口窄）";
+  return "均衡型";
+}
+
 export function buildCharacterMap(customDrafts: CustomAgentDraft[]): Record<string, Character> {
   const map: Record<string, Character> = { ...CHARACTER_MAP };
   for (const d of customDrafts) {

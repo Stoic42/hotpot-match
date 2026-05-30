@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef, useCallback, Suspense, createContext, useContext } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
+import { toast } from "sonner";
 import {
   CHARACTER_MAP,
   TOPIC_BOMBS,
@@ -15,6 +16,8 @@ import {
   buildCharacterMap,
   buildTopicStatusMap,
   getCharSide,
+  grabRoleLabel,
+  hasMemoryHint,
 } from "@/lib/character-registry";
 import {
   loadSessionCustomAgents,
@@ -247,15 +250,51 @@ function CookingPill({
   item,
   nowMs,
   hideTimes,
+  grabbable,
+  hint,
+  onGrab,
 }: {
   item: CookingItem;
   nowMs: number;
   hideTimes?: boolean;
+  grabbable?: boolean;
+  hint?: boolean;
+  onGrab?: (ingredientId: string) => void;
 }) {
   const elapsed = Math.floor((nowMs - item.startedAt) / 1000);
   const remaining = Math.max(0, item.ingredient.cookTimeSeconds - elapsed);
   const isReady = remaining === 0;
   const pct = Math.min(1, elapsed / item.ingredient.cookTimeSeconds);
+
+  // During the live round we hide the timer entirely; players grab on memory.
+  if (grabbable) {
+    // Memory-派 players get a faint "doneness" hint (no numbers) near completion.
+    const hintActive = hint && pct > 0.6;
+    const hintColor = pct >= 0.92 ? "#9CB48A" : pct >= 0.78 ? "#F5BE00" : "#C0392B";
+    return (
+      <motion.button
+        layout
+        type="button"
+        whileTap={{ scale: 0.9 }}
+        onClick={() => onGrab?.(item.ingredient.id)}
+        className="bg-[#1A1816] border px-3 py-1.5 rounded-lg flex items-center gap-2 shrink-0 relative overflow-hidden active:bg-[#F2A24A]/10"
+        style={{ borderColor: item.ingredient.color + "80" }}
+      >
+        {hintActive && (
+          <span
+            className="w-1.5 h-1.5 rounded-full shrink-0"
+            style={{ background: hintColor, boxShadow: `0 0 6px ${hintColor}` }}
+          />
+        )}
+        <span className="text-xs font-bold" style={{ color: item.ingredient.color }}>
+          {item.ingredient.emoji} {item.ingredient.nameCN}
+        </span>
+        <span className="text-[10px] text-[#1A1816] bg-[#F2A24A] px-1.5 py-0.5 rounded font-black uppercase tracking-wider">
+          抢
+        </span>
+      </motion.button>
+    );
+  }
 
   return (
     <motion.div layout
@@ -614,6 +653,7 @@ function MainFeedInner() {
 
   const customDraftsRef = useRef<CustomAgentDraft[]>([]);
   const topicRulesRef = useRef<Record<string, Partial<Record<string, TopicStatusRule>>>>({});
+  const grabCooldownRef = useRef<Record<string, number>>({});
 
   const feedRef = useRef<HTMLDivElement>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -830,16 +870,37 @@ function MainFeedInner() {
     return () => { if (topicRevealRef.current) clearTimeout(topicRevealRef.current); };
   }, [topicBomb.open, topicBomb.revealed, topicBomb.reactions.length]);
 
-  const handleGrab = useCallback(async () => {
+  const handleGrab = useCallback(async (ingredientId: string) => {
     if (!sessionId || !roundActive || !myGuestId) return;
+    if ((grabCooldownRef.current[ingredientId] ?? 0) > Date.now()) return;
     setGrabbing(true);
     try {
       const res = await request(`/api/sessions/${sessionId}/pot`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ action: "grab" }),
+        body: JSON.stringify({ action: "grab", ingredientId }),
       });
-      if (res.ok) {
+      const data = await res.json().catch(() => ({}));
+      if (res.ok && data.ok) {
+        const labels: Record<string, string> = {
+          perfect: "✨ 完美！",
+          good: "👍 不错",
+          overcooked: "🔥 老了",
+        };
+        const timing = labels[data.quality] ?? "出手";
+        if (data.contested) {
+          toast(`🍶 有人跟你抢！${timing} — 拼酒决胜，看结算`, { icon: "🥢" });
+        } else {
+          toast.success(`${timing}（抢夺中…结算见分）`);
+        }
+        await syncSession();
+      } else if (data.tooEarly) {
+        grabCooldownRef.current[ingredientId] = Date.now() + 1500;
+        toast("还没熟，等一下！", { icon: "🥢" });
+      } else if (data.already) {
+        toast("你已经出手了，等结算", { icon: "⏳" });
+      } else if (data.gone) {
+        toast("手慢了，菜被抢走了", { icon: "😮" });
         await syncSession();
       }
     } catch (e) {
@@ -1218,6 +1279,9 @@ function MainFeedInner() {
     })
     .sort((a, b) => a.remaining - b.remaining)[0];
 
+  const myHasHint = !!myGuestId && hasMemoryHint(myGuestId, customDraftsRef.current);
+  const myRoleLabel = myGuestId ? grabRoleLabel(myGuestId, customDraftsRef.current) : null;
+
   // ── Loading / auth states ──
   if (authLoading) {
     return (
@@ -1244,13 +1308,7 @@ function MainFeedInner() {
       {/* ── Overlays ── */}
       <AnimatePresence>
         {foodScramble.open && (
-          <FoodScrambleOverlay
-            state={foodScramble}
-            onClose={closeFoodScramble}
-            onGrab={() => void handleGrab()}
-            canGrab={foodScramble.phase === "scramble" && !!myGuestId && roundActive}
-            grabbing={grabbing}
-          />
+          <FoodScrambleOverlay state={foodScramble} onClose={closeFoodScramble} />
         )}
       </AnimatePresence>
       <AnimatePresence>
@@ -1346,6 +1404,7 @@ function MainFeedInner() {
             {myGuestId && charMap[myGuestId] && (
               <span className="text-[9px] text-[#F2A24A] font-bold tracking-widest mt-0.5">
                 你扮演 {charMap[myGuestId].flag} {charMap[myGuestId].name}
+                {myRoleLabel ? ` · ${myRoleLabel}` : ""}
               </span>
             )}
             {serverRound?.phase === "running" && (
@@ -1392,7 +1451,7 @@ function MainFeedInner() {
 
         {cooking.length > 0 && (
           <div className="px-4 pb-3">
-            {nextReady && nextReady.remaining <= 6 && (
+            {nextReady && nextReady.remaining <= 6 && !(roundActive && !memoryFlashOpen) && (
               <motion.div
                 initial={{ opacity: 0, y: -6 }}
                 animate={{ opacity: 1, y: 0 }}
@@ -1419,6 +1478,9 @@ function MainFeedInner() {
                     item={c}
                     nowMs={nowMs}
                     hideTimes={roundActive && !memoryFlashOpen}
+                    grabbable={roundActive && !memoryFlashOpen && !!myGuestId}
+                    hint={myHasHint}
+                    onGrab={(id) => void handleGrab(id)}
                   />
                 ))}
               </div>
