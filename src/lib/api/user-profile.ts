@@ -1,12 +1,12 @@
-import type { User } from "@eazo/sdk";
+import type { ClientUser } from "@/lib/auth";
 import { request } from "./request";
 
-export async function fetchUserProfile(): Promise<User | null> {
+export async function fetchUserProfile(): Promise<ClientUser | null> {
   try {
     const res = await request("/api/user/profile");
     if (!res.ok) return null;
-    const json = (await res.json()) as { ok: boolean; user: User };
-    return json.ok ? json.user : null;
+    const json = (await res.json()) as ClientUser;
+    return json.id ? json : null;
   } catch {
     return null;
   }

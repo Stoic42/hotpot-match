@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { getClientId } from "@/lib/auth";
 import { getMessages, addMessage } from "@/lib/db/queries/sessions";
 
 // GET /api/sessions/[id]/messages
@@ -7,8 +7,8 @@ export async function GET(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const result = requireAuth(request);
-  if (!result.ok) return result.response;
+  const auth = getClientId(request);
+  if (!auth.ok) return auth.response;
 
   const { id } = await params;
   const sessionId = parseInt(id, 10);
@@ -23,8 +23,8 @@ export async function POST(
   request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const result = requireAuth(request);
-  if (!result.ok) return result.response;
+  const auth = getClientId(request);
+  if (!auth.ok) return auth.response;
 
   const { id } = await params;
   const sessionId = parseInt(id, 10);

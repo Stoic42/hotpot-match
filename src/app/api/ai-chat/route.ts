@@ -1,23 +1,59 @@
-import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth";
-import { ai } from "@eazo/sdk";
+import { NextRequest, NextResponse } from "next/server";
+import OpenAI from "openai";
+import { getClientId } from "@/lib/auth";
 import { CHARACTER_MAP } from "@/lib/characters";
 
-ai.configure({ privateKey: process.env.EAZO_PRIVATE_KEY! });
+const TIMEOUT_MS = 15_000;
+
+/**
+ * Lazy-initialize the OpenAI client so the build doesn't fail
+ * when DEEPSEEK_API_KEY is not set in the build environment.
+ */
+let _openai: OpenAI | null = null;
+function getOpenAI(): OpenAI {
+  if (!_openai) {
+    _openai = new OpenAI({
+      apiKey: process.env.DEEPSEEK_API_KEY,
+      baseURL: "https://api.deepseek.com/v1",
+      // Safe: this route only runs server-side (Next.js API route).
+      dangerouslyAllowBrowser: true,
+    });
+  }
+  return _openai;
+}
+
+async function callWithRetry(
+  params: OpenAI.Chat.Completions.ChatCompletionCreateParamsNonStreaming,
+  retries = 1,
+): Promise<OpenAI.Chat.Completions.ChatCompletion> {
+  try {
+    return await getOpenAI().chat.completions.create(params, {
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (err) {
+    if (retries > 0) {
+      console.warn("[ai-chat] Retrying after error:", err);
+      return callWithRetry(params, retries - 1);
+    }
+    throw err;
+  }
+}
 
 export async function POST(request: NextRequest) {
-  const auth = requireAuth(request);
+  const auth = getClientId(request);
   if (!auth.ok) return auth.response;
 
   const body = await request.json();
   const { guestId, context, trigger } = body as {
     guestId: string;
-    context: string;   // last few messages for context
-    trigger: string;   // what prompted this message
+    context: string;
+    trigger: string;
   };
 
   const char = CHARACTER_MAP[guestId];
-  if (!char) return Response.json({ error: "Unknown guest" }, { status: 400 });
+  if (!char) {
+    return NextResponse.json({ error: "Unknown guest" }, { status: 400 });
+  }
 
   const systemPrompt = `You are ${char.name}, a character at a Chinese hotpot dinner party.
 
@@ -40,20 +76,13 @@ What just happened / what to react to: ${trigger}
 
 Write ONLY ${char.name}'s response. Nothing else.`;
 
-  try {
-    const result = await ai.chat({
-      model: "deepseek.v3.1",
-      messages: [{ role: "user", content: systemPrompt }],
-      max_tokens: 120,
-      temperature: 0.9,
-    });
+  const result = await callWithRetry({
+    model: "deepseek-chat",
+    messages: [{ role: "user", content: systemPrompt }],
+    max_tokens: 120,
+    temperature: 0.9,
+  });
 
-    const text = result.choices[0]?.message?.content?.trim() ?? "";
-    return Response.json({ text });
-  } catch (err) {
-    console.error("AI chat error:", err);
-    // Fallback to a sample line if AI fails
-    const fallback = char.messageSamples[Math.floor(Math.random() * char.messageSamples.length)];
-    return Response.json({ text: fallback });
-  }
+  const text = result.choices[0]?.message?.content?.trim() ?? "";
+  return NextResponse.json({ text });
 }

@@ -1,9 +1,8 @@
 import type { Metadata } from "next";
 import { Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
-import { EazoProvider } from "@eazo/sdk/react";
-import { UserSyncEffect } from "@/components/user-profile/user-sync-effect";
 import { Toaster } from "@/components/ui/sonner";
+import { ClientIdProvider } from "@/components/client-id-provider";
 
 const notoSansSC = Noto_Sans_SC({
   subsets: ["latin"],
@@ -25,11 +24,10 @@ export default function RootLayout({
   return (
     <html lang="zh-CN" className={notoSansSC.variable}>
       <body>
-        <EazoProvider>
-          <UserSyncEffect />
+        <ClientIdProvider>
           {children}
           <Toaster />
-        </EazoProvider>
+        </ClientIdProvider>
       </body>
     </html>
   );

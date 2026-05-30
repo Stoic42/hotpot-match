@@ -1,13 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { getClientId } from "@/lib/auth";
 import { createSession, getActiveSession, endSession } from "@/lib/db/queries/sessions";
 import { CHARACTERS } from "@/lib/characters";
 
 // POST /api/sessions — create a new party session
 export async function POST(request: NextRequest) {
-  const result = requireAuth(request);
-  if (!result.ok) return result.response;
-  const { id: userId } = result.user;
+  const auth = getClientId(request);
+  if (!auth.ok) return auth.response;
+  const userId = auth.clientId;
 
   const body = await request.json();
   const { guestIds } = body as { guestIds: string[] };
@@ -34,9 +34,9 @@ export async function POST(request: NextRequest) {
 
 // GET /api/sessions — get active session
 export async function GET(request: NextRequest) {
-  const result = requireAuth(request);
-  if (!result.ok) return result.response;
-  const { id: userId } = result.user;
+  const auth = getClientId(request);
+  if (!auth.ok) return auth.response;
+  const userId = auth.clientId;
 
   const session = await getActiveSession(userId);
   if (!session) return NextResponse.json(null);

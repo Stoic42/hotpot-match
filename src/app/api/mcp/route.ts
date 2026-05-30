@@ -1,10 +1,10 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { NextRequest } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { getClientId } from "@/lib/auth";
 import { buildMcpServer } from "@/lib/mcp/server";
 
 async function handleMcpRequest(request: NextRequest): Promise<Response> {
-  const auth = requireAuth(request);
+  const auth = getClientId(request);
   if (!auth.ok) return auth.response;
 
   const transport = new WebStandardStreamableHTTPServerTransport({
@@ -12,7 +12,7 @@ async function handleMcpRequest(request: NextRequest): Promise<Response> {
     sessionIdGenerator: undefined,
   });
 
-  const server = buildMcpServer(auth.user.id);
+  const server = buildMcpServer(auth.clientId);
   await server.connect(transport);
 
   return transport.handleRequest(request);

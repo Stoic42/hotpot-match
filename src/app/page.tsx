@@ -5,9 +5,7 @@ import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { CHARACTERS, type Character } from "@/lib/characters";
 import { request } from "@/lib/api/request";
-import { auth } from "@eazo/sdk";
-import { useEazo } from "@eazo/sdk/react";
-import { memory } from "@eazo/sdk";
+import { useClientId } from "@/components/client-id-provider";
 import { AlertTriangle, ChevronRight, Plus, Check, Users } from "lucide-react";
 
 const MAX_GUESTS = 5;
@@ -155,8 +153,7 @@ function CharacterCard({
 
 export default function GuestSelectionPage() {
   const router = useRouter();
-  const user = useEazo((s) => s.auth.user);
-  const authLoading = useEazo((s) => s.auth.loading);
+  const { clientId, loading: authLoading } = useClientId();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [starting, setStarting] = useState(false);
 
@@ -177,14 +174,7 @@ export default function GuestSelectionPage() {
 
   const handleStart = async () => {
     if (selected.size === 0) return;
-
-    if (!user) {
-      try {
-        await auth.login();
-      } catch {
-        return;
-      }
-    }
+    if (!clientId) return;
 
     setStarting(true);
     try {
@@ -194,21 +184,6 @@ export default function GuestSelectionPage() {
         body: JSON.stringify({ guestIds: Array.from(selected) }),
       });
       const session = await res.json();
-
-      memory
-        .reportAction({
-          content: `User started a hotpot party with ${selected.size} guests: ${Array.from(selected).join(", ")}`,
-          event_type: "create",
-          page: "guest-selection",
-          metadata: {
-            type: "start_party",
-            guest_count: selected.size,
-            guest_ids: Array.from(selected),
-            session_id: session.id,
-          },
-        })
-        .catch(() => {});
-
       router.push(`/feed?session=${session.id}`);
     } catch (err) {
       console.error("Failed to start session", err);

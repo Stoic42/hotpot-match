@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
-import { requireAuth } from "@/lib/auth";
+import { getClientId } from "@/lib/auth";
 import { upsertUser } from "@/lib/db/queries/users";
 
 export async function GET(request: NextRequest) {
-  const result = requireAuth(request);
-  if (!result.ok) return result.response;
-  const { id, name, email, avatarUrl } = result.user;
+  const auth = getClientId(request);
+  if (!auth.ok) return auth.response;
+  const clientId = auth.clientId;
 
-  const user = await upsertUser({ id, name: name ?? null, email: email ?? null, avatar: avatarUrl ?? null });
+  const user = await upsertUser({ id: clientId, name: null, email: null, avatar: null });
   return NextResponse.json(user);
 }

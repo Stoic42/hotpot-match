@@ -4,7 +4,6 @@ import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Star, Check, AlertTriangle } from "lucide-react";
-import { memory } from "@eazo/sdk";
 
 const SPRING = { type: "spring" as const, stiffness: 300, damping: 35 };
 const TAP_SCALE = 0.95;
@@ -173,22 +172,6 @@ function MenuPrepInner() {
   );
 
   const handleConfirm = () => {
-    const selectedItems = MENU_ITEMS.filter((m) => selected.has(m.id));
-
-    memory
-      .reportAction({
-        content: `User added ${selectedItems.length} ingredients to the pot: ${selectedItems.map((i) => i.nameEN).join(", ")}`,
-        event_type: "update",
-        page: "menu-prep",
-        metadata: {
-          type: "drop_ingredients",
-          items: selectedItems.map((i) => i.id),
-          authenticity_score: authenticityScore,
-          session_id: sessionId,
-        },
-      })
-      .catch(() => {});
-
     setDropped(true);
     setTimeout(() => {
       router.back();

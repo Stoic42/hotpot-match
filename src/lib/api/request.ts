@@ -1,21 +1,20 @@
-import { auth } from "@eazo/sdk";
-
 /**
- * Drop-in replacement for `fetch` that automatically injects `x-eazo-session`.
- * The SDK resolves the current session header from either the host bridge
- * (Eazo Mobile) or localStorage (web).
+ * Drop-in replacement for `fetch` that automatically injects `x-client-id`.
+ * The client ID is a UUID stored in localStorage, generated on first visit.
  */
 export async function request(
   input: RequestInfo | URL,
   init: RequestInit = {},
 ): Promise<Response> {
-  const sessionHeader = await auth.getSessionHeader();
+  const clientId = typeof window !== "undefined"
+    ? window.localStorage.getItem("hotpot-client-id") ?? ""
+    : "";
 
   return fetch(input, {
     ...init,
     headers: {
       ...init.headers,
-      ...(sessionHeader ? { "x-eazo-session": sessionHeader } : {}),
+      ...(clientId ? { "x-client-id": clientId } : {}),
     },
   });
 }

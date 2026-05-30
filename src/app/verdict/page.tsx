@@ -5,8 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
 import { CHARACTER_MAP, CHARACTERS } from "@/lib/characters";
 import { request } from "@/lib/api/request";
-import { auth } from "@eazo/sdk";
-import { useEazo } from "@eazo/sdk/react";
+import { useClientId } from "@/components/client-id-provider";
 import { Share2, RotateCcw } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -155,8 +154,7 @@ function VerdictInner() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session");
 
-  const user = useEazo((s) => s.auth.user);
-  const authLoading = useEazo((s) => s.auth.loading);
+  const { clientId, loading: authLoading } = useClientId();
 
   const [stats, setStats] = useState<SessionStats[]>([]);
   const [guestIds, setGuestIds] = useState<string[]>([]);
@@ -167,8 +165,7 @@ function VerdictInner() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    if (!sessionId || authLoading) return;
-    if (!user) { auth.login().catch(() => {}); return; }
+    if (!sessionId || authLoading || !clientId) return;
 
     // Load session + messages to compute stats
     Promise.all([
@@ -210,7 +207,7 @@ function VerdictInner() {
       setStats(built);
       setLoading(false);
     }).catch(() => setLoading(false));
-  }, [sessionId, user, authLoading, ingredientsCooked]);
+  }, [sessionId, clientId, authLoading, ingredientsCooked]);
 
   // Overall party score
   const overallScore = stats.length > 0

@@ -12,9 +12,7 @@ import {
   type PotIngredient,
 } from "@/lib/characters";
 import { request } from "@/lib/api/request";
-import { auth } from "@eazo/sdk";
-import { useEazo } from "@eazo/sdk/react";
-import { memory } from "@eazo/sdk";
+import { useClientId } from "@/components/client-id-provider";
 import {
   ChevronLeft,
   MoreVertical,
@@ -649,8 +647,7 @@ function MainFeedInner() {
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session");
 
-  const user = useEazo((s) => s.auth.user);
-  const authLoading = useEazo((s) => s.auth.loading);
+  const { clientId, loading: authLoading } = useClientId();
 
   const [messages, setMessages] = useState<FeedMessage[]>([]);
   const [guests, setGuests] = useState<Character[]>([]);
@@ -694,8 +691,7 @@ function MainFeedInner() {
 
   // ── load session ──
   useEffect(() => {
-    if (!sessionId || authLoading) return;
-    if (!user) { auth.login().catch(() => {}); return; }
+    if (!sessionId || authLoading || !clientId) return;
 
     request(`/api/sessions/${sessionId}/messages`).then((r) => r.json())
       .then((data: FeedMessage[]) => {
@@ -716,7 +712,7 @@ function MainFeedInner() {
           setHunger(h);
         }
       }).catch(console.error);
-  }, [sessionId, user, authLoading]);
+  }, [sessionId, clientId, authLoading]);
 
   // ── arrival announcements ──
   useEffect(() => {
@@ -829,12 +825,6 @@ function MainFeedInner() {
     setIngredientsCooked((n) => n + 1);
 
     setFoodScramble((prev) => ({ ...prev, phase: "result", grabbedBy, reactions }));
-
-    memory.reportAction({
-      content: `Food scramble: ${ing.nameEN} grabbed by ${grabbedBy ? CHARACTER_MAP[grabbedBy]?.name : "nobody"}`,
-      event_type: "update", page: "main-feed",
-      metadata: { type: "food_scramble", ingredient_id: ing.id, winner: grabbedBy },
-    }).catch(() => {});
   }, [guests]);
 
   const closeFoodScramble = useCallback(() => {
@@ -1014,14 +1004,10 @@ function MainFeedInner() {
       </div>
     );
   }
-  if (!user) {
+  if (!clientId) {
     return (
       <div className="min-h-svh bg-[#1A1816] flex flex-col items-center justify-center gap-4 p-8">
-        <p className="text-[#A8A29E] text-center">请先登录查看派对现场</p>
-        <motion.button whileTap={{ scale: 0.97 }} onClick={() => auth.login().catch(() => {})}
-          className="px-6 py-3 bg-[#F2A24A] text-[#1A1816] font-black rounded-xl">
-          登录 / Login
-        </motion.button>
+        <p className="text-[#A8A29E] text-center">Initializing...</p>
       </div>
     );
   }
