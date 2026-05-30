@@ -194,10 +194,14 @@ function VerdictInner() {
         const baseDrink = char?.alcoholAllergy ? 0
           : (char?.drinkingPower ?? 5) * 10;
 
+        // Use character traits for deterministic ingredientsEaten instead of Math.random
+        const grabSpeed = char?.id === "chen" ? 0.9 : char?.id === "youwei" ? 0.8 : char?.id === "marta" ? 0.7 : char?.id === "nina" ? 0.65 : char?.id === "zion" ? 0.4 : 0.3;
+        const baseEaten = Math.floor(ingredientsCooked / Math.max(1, ids.length));
+        const bonusEaten = grabSpeed > 0.5 && ingredientsCooked > ids.length ? 1 : 0;
         return {
           guestId: id,
           messageCount: guestMsgs.length,
-          ingredientsEaten: Math.max(0, Math.floor(ingredientsCooked / ids.length) + (Math.random() > 0.5 ? 1 : 0)),
+          ingredientsEaten: Math.max(0, baseEaten + bonusEaten),
           hunger: Math.min(100, baseHunger + (ingredientsCooked < 3 ? 30 : 0)),
           drinkScore: Math.min(100, baseDrink),
           chaosScore: Math.min(100, baseChaos + guestMsgs.length * 2),
