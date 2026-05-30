@@ -3,15 +3,28 @@ import { db } from "../client";
 import { sessions, messages } from "../schema/sessions";
 import type { Session, Message } from "../schema/sessions";
 import type { CustomAgentDraft } from "@/lib/custom-agent";
+import { upsertPlayer } from "@/lib/session-players";
 
 export async function createSession(
   userId: string,
   guestIds: string[],
   customGuests: CustomAgentDraft[] = [],
+  options?: { lobby?: boolean },
 ): Promise<Session> {
+  const lobby = options?.lobby ?? guestIds.length === 0;
+  const players = lobby
+    ? upsertPlayer([], userId, { displayName: "房主" })
+    : [];
+
   const rows = await db
     .insert(sessions)
-    .values({ userId, guestIds, customGuests, status: "active" })
+    .values({
+      userId,
+      guestIds: lobby ? [] : guestIds,
+      customGuests: lobby ? [] : customGuests,
+      players,
+      status: "active",
+    })
     .returning();
   return rows[0];
 }

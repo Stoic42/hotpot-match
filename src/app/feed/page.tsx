@@ -243,7 +243,15 @@ function MessageBubble({ msg }: { msg: FeedMessage }) {
 // Cooking pill
 // ─────────────────────────────────────────────────────────────────────────────
 
-function CookingPill({ item, nowMs }: { item: CookingItem; nowMs: number }) {
+function CookingPill({
+  item,
+  nowMs,
+  hideTimes,
+}: {
+  item: CookingItem;
+  nowMs: number;
+  hideTimes?: boolean;
+}) {
   const elapsed = Math.floor((nowMs - item.startedAt) / 1000);
   const remaining = Math.max(0, item.ingredient.cookTimeSeconds - elapsed);
   const isReady = remaining === 0;
@@ -262,6 +270,8 @@ function CookingPill({ item, nowMs }: { item: CookingItem; nowMs: number }) {
       </span>
       {isReady ? (
         <span className="text-[10px] text-emerald-400 font-black bg-emerald-900/40 px-1.5 py-0.5 rounded animate-pulse">熟了!</span>
+      ) : hideTimes ? (
+        <span className="text-[10px] text-[#F2A24A] bg-[#F2A24A]/15 px-1.5 py-0.5 rounded font-black">??:??</span>
       ) : (
         <span className="text-[10px] text-[#78716C] bg-white/5 px-1.5 py-0.5 rounded">
           {String(Math.floor(remaining / 60)).padStart(2, "0")}:{String(remaining % 60).padStart(2, "0")}
@@ -310,7 +320,10 @@ function MemoryFlashOverlay({ onDone }: { onDone: () => void }) {
           </div>
         ))}
       </div>
-      <p className="text-[#78716C] text-xs mt-8 animate-pulse">闪记结束即开局…</p>
+      <p className="text-[#78716C] text-xs mt-6 text-center max-w-xs">
+        开局后锅里不再显示秒数 — 靠记忆判断何时开抢
+      </p>
+      <p className="text-[#F2A24A] text-xs mt-2 animate-pulse font-bold">闪记结束即开局…</p>
     </motion.div>
   );
 }
@@ -322,9 +335,15 @@ function MemoryFlashOverlay({ onDone }: { onDone: () => void }) {
 function FoodScrambleOverlay({
   state,
   onClose,
+  onGrab,
+  canGrab,
+  grabbing,
 }: {
   state: FoodScramble;
   onClose: () => void;
+  onGrab?: () => void;
+  canGrab?: boolean;
+  grabbing?: boolean;
 }) {
   const charMap = useCharMap();
   if (!state.open || !state.ingredient) return null;
@@ -378,7 +397,17 @@ function FoodScrambleOverlay({
           <div className="text-[#F2A24A] font-black text-xl uppercase tracking-widest animate-pulse">
             抢！抢！抢！
           </div>
-          <div className="text-white/40 text-sm">GRAB IT—</div>
+          <div className="text-white/40 text-sm mb-4">谁先点到谁代表自己的角色抢到</div>
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.92 }}
+            disabled={!canGrab || grabbing}
+            onClick={onGrab}
+            className="w-full max-w-xs py-6 rounded-2xl font-black text-2xl uppercase tracking-[0.2em] text-[#1A1816] disabled:opacity-40 shadow-[0_0_40px_rgba(242,162,74,0.5)]"
+            style={{ background: canGrab ? "#F2A24A" : "#78716C" }}
+          >
+            {grabbing ? "…" : "抢！"}
+          </motion.button>
         </div>
       )}
 
@@ -580,6 +609,8 @@ function MainFeedInner() {
   const [cardHand, setCardHand] = useState<ActionCardId[]>([]);
   const [usedCards, setUsedCards] = useState<Set<ActionCardId>>(new Set());
   const [cardsOpen, setCardsOpen] = useState(false);
+  const [myGuestId, setMyGuestId] = useState<string | null>(null);
+  const [grabbing, setGrabbing] = useState(false);
 
   const customDraftsRef = useRef<CustomAgentDraft[]>([]);
   const topicRulesRef = useRef<Record<string, Partial<Record<string, TopicStatusRule>>>>({});
@@ -671,7 +702,17 @@ function MainFeedInner() {
           customGuests?: CustomAgentDraft[];
           round: RoundState;
           pot?: SessionPotState;
+          rosterLocked?: boolean;
+          myGuestId?: string | null;
         };
+
+        if (!session.rosterLocked && (!session.guestIds || session.guestIds.length === 0)) {
+          router.replace(`/lobby?session=${sessionId}`);
+          return;
+        }
+
+        setMyGuestId(session.myGuestId ?? null);
+
         if (session.guestIds?.length) {
           const customs =
             session.customGuests?.length
@@ -704,7 +745,7 @@ function MainFeedInner() {
     } catch (e) {
       console.error(e);
     }
-  }, [sessionId, clientId, applyPotFromServer]);
+  }, [sessionId, clientId, applyPotFromServer, router]);
 
   useEffect(() => {
     if (!sessionId || authLoading || !clientId) return;
@@ -762,7 +803,7 @@ function MainFeedInner() {
 
   const copyInviteLink = useCallback(() => {
     if (typeof window === "undefined" || !sessionId) return;
-    const url = `${window.location.origin}/feed?session=${sessionId}`;
+    const url = `${window.location.origin}/lobby?session=${sessionId}`;
     void navigator.clipboard.writeText(url).then(() => {
       setInviteCopied(true);
       setTimeout(() => setInviteCopied(false), 2000);
@@ -788,6 +829,25 @@ function MainFeedInner() {
     }, 600 + Math.random() * 400);
     return () => { if (topicRevealRef.current) clearTimeout(topicRevealRef.current); };
   }, [topicBomb.open, topicBomb.revealed, topicBomb.reactions.length]);
+
+  const handleGrab = useCallback(async () => {
+    if (!sessionId || !roundActive || !myGuestId) return;
+    setGrabbing(true);
+    try {
+      const res = await request(`/api/sessions/${sessionId}/pot`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "grab" }),
+      });
+      if (res.ok) {
+        await syncSession();
+      }
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setGrabbing(false);
+    }
+  }, [sessionId, roundActive, myGuestId, syncSession]);
 
   const closeFoodScramble = useCallback(async () => {
     if (!sessionId) return;
@@ -1183,7 +1243,15 @@ function MainFeedInner() {
 
       {/* ── Overlays ── */}
       <AnimatePresence>
-        {foodScramble.open && <FoodScrambleOverlay state={foodScramble} onClose={closeFoodScramble} />}
+        {foodScramble.open && (
+          <FoodScrambleOverlay
+            state={foodScramble}
+            onClose={closeFoodScramble}
+            onGrab={() => void handleGrab()}
+            canGrab={foodScramble.phase === "scramble" && !!myGuestId && roundActive}
+            grabbing={grabbing}
+          />
+        )}
       </AnimatePresence>
       <AnimatePresence>
         {topicBomb.open && <TopicBombOverlay state={topicBomb} onClose={handleCloseTopicBomb} />}
@@ -1226,7 +1294,9 @@ function MainFeedInner() {
                     >
                       <div className="text-2xl mb-1">{ing.emoji}</div>
                       <div className="text-[10px] font-bold text-[#F5F1E8]">{ing.nameCN}</div>
-                      <div className="text-[9px] text-[#78716C] mt-0.5">{ing.cookTimeSeconds}s</div>
+                      <div className="text-[9px] text-[#78716C] mt-0.5">
+                        {roundActive && !memoryFlashOpen ? "??s" : `${ing.cookTimeSeconds}s`}
+                      </div>
                       {alreadyCooking && <div className="text-[8px] text-[#F2A24A] font-black mt-0.5">锅里</div>}
                     </motion.button>
                   );
@@ -1273,9 +1343,14 @@ function MainFeedInner() {
                   ? "等一位玩家结束闪记…"
                   : `⏱ ${formatPartyClock(partyRemaining)} · 一分钟局`}
             </span>
+            {myGuestId && charMap[myGuestId] && (
+              <span className="text-[9px] text-[#F2A24A] font-bold tracking-widest mt-0.5">
+                你扮演 {charMap[myGuestId].flag} {charMap[myGuestId].name}
+              </span>
+            )}
             {serverRound?.phase === "running" && (
               <span className="text-[9px] text-indigo-300 font-bold tracking-widest mt-0.5 flex items-center gap-1">
-                <Users className="w-3 h-3" /> 多人 · 计时+锅里同步
+                <Users className="w-3 h-3" /> 拼手速抢菜 · 同步计时
               </span>
             )}
             {inviteCopied && (
@@ -1338,7 +1413,14 @@ function MainFeedInner() {
                 🍲
               </div>
               <div className="flex space-x-2">
-                {cooking.map((c) => <CookingPill key={c.ingredient.id} item={c} nowMs={nowMs} />)}
+                {cooking.map((c) => (
+                  <CookingPill
+                    key={c.ingredient.id}
+                    item={c}
+                    nowMs={nowMs}
+                    hideTimes={roundActive && !memoryFlashOpen}
+                  />
+                ))}
               </div>
             </div>
           </div>

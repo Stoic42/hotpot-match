@@ -4,12 +4,14 @@ import { sessions } from "../schema/sessions";
 import type { CustomAgentDraft } from "@/lib/custom-agent";
 import {
   addIngredientToPot,
+  applyPlayerGrab,
   dismissPotScramble,
   emptyPotState,
   normalizePotState,
   tickPotState,
   type SessionPotState,
 } from "@/lib/pot-state";
+import { guestIdForClient } from "./players";
 import { CHARACTER_MAP, POT_INGREDIENTS } from "@/lib/characters";
 import { addMessage, getSessionById } from "./sessions";
 
@@ -65,12 +67,56 @@ export async function applyPotAddIngredient(
     await addMessage(
       sessionId,
       "system",
-      `${ing.emoji} ${ing.nameCN} 下锅！（${ing.cookTimeSeconds}s）`,
+      `${ing.emoji} ${ing.nameCN} 下锅！记牢烫几秒——熟了要抢`,
       "announcement",
     );
   }
 
   return { ok: true, pot: updated };
+}
+
+export async function applyPotGrab(
+  sessionId: number,
+  clientId: string,
+): Promise<
+  | { ok: true; pot: SessionPotState; guestId: string }
+  | { ok: false; error: string }
+> {
+  const session = await getSessionById(sessionId);
+  if (!session) return { ok: false, error: "Session not found" };
+
+  const guestId = guestIdForClient(session, clientId);
+  if (!guestId) {
+    return { ok: false, error: "Claim a character in the lobby first" };
+  }
+
+  let pot = normalizePotState(session.potState);
+  pot = tickPotState(
+    pot,
+    sessionId,
+    session.guestIds ?? [],
+    (session.customGuests ?? []) as CustomAgentDraft[],
+  );
+
+  const updated = applyPlayerGrab(
+    pot,
+    sessionId,
+    session.guestIds ?? [],
+    (session.customGuests ?? []) as CustomAgentDraft[],
+    guestId,
+    clientId,
+  );
+
+  if (!updated) {
+    return { ok: false, error: "Not in grab window" };
+  }
+
+  if (updated.scramble?.grabbedByClientId !== clientId) {
+    return { ok: false, error: "Too slow — already grabbed" };
+  }
+
+  await savePotState(sessionId, updated);
+  return { ok: true, pot: updated, guestId };
 }
 
 export async function applyPotDismissScramble(sessionId: number): Promise<SessionPotState> {

@@ -216,6 +216,27 @@ export default function GuestSelectionPage() {
     []
   );
 
+  const handleCreateLobby = async () => {
+    if (!clientId) return;
+    setStarting(true);
+    try {
+      const res = await request("/api/sessions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ lobby: true, guestIds: [] }),
+      });
+      if (!res.ok) {
+        setStarting(false);
+        return;
+      }
+      const session = await res.json();
+      router.push(`/lobby?session=${session.id}`);
+    } catch (err) {
+      console.error(err);
+      setStarting(false);
+    }
+  };
+
   const handleStart = async () => {
     if (selected.size === 0) return;
     if (!clientId) return;
@@ -286,9 +307,9 @@ export default function GuestSelectionPage() {
           </motion.button>
         </div>
         <p className="text-[#78716C] text-sm font-medium leading-relaxed">
-          11 位预设嘉宾各有 2 个战斗技能；一分钟闪记后抢菜 · Feed 里回合制拼酒。
+          多人：创建房间 → 好友各选不同角色 → 闪记烫几秒 → 熟了拼手速抢菜。
           <br />
-          开局后复制 Feed 链接多人同桌 · 服务端统一计时。
+          单人演示：下方选多个角色由你一人操控。
         </p>
         <motion.button
           whileTap={{ scale: 0.97 }}
@@ -310,7 +331,7 @@ export default function GuestSelectionPage() {
           <motion.button
             whileTap={{ scale: 0.97 }}
             disabled={!joinSessionId}
-            onClick={() => router.push(`/feed?session=${joinSessionId}`)}
+            onClick={() => router.push(`/lobby?session=${joinSessionId}`)}
             className="shrink-0 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest bg-indigo-600/80 text-white disabled:opacity-30"
           >
             加入房间
@@ -382,16 +403,26 @@ export default function GuestSelectionPage() {
           </div>
         </div>
 
-        {/* Start button */}
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={handleCreateLobby}
+          disabled={starting}
+          className="w-full py-4 rounded-xl flex items-center justify-center space-x-2 text-base font-black uppercase tracking-widest bg-indigo-600 text-white shadow-[0_0_20px_rgba(79,70,229,0.35)] disabled:opacity-50"
+          transition={SPRING}
+        >
+          <Users className="w-5 h-5" />
+          <span>创建多人房间 / Multiplayer</span>
+        </motion.button>
+
         <motion.button
           whileTap={{ scale: selected.size > 0 ? 0.97 : 1 }}
           whileHover={{ scale: selected.size > 0 ? 1.01 : 1 }}
           onClick={handleStart}
           disabled={selected.size === 0 || starting}
-          className={`w-full py-4 rounded-xl flex items-center justify-center space-x-2 text-base font-black uppercase tracking-widest transition-all ${
+          className={`w-full py-3 rounded-xl flex items-center justify-center space-x-2 text-sm font-black uppercase tracking-widest transition-all border ${
             selected.size > 0
-              ? "bg-[#F2A24A] text-[#1A1816] shadow-[0_0_20px_rgba(242,162,74,0.4)]"
-              : "bg-white/10 text-white/30 cursor-not-allowed"
+              ? "border-[#F2A24A]/50 text-[#F2A24A] bg-[#F2A24A]/10"
+              : "border-white/10 text-white/30 cursor-not-allowed"
           }`}
           transition={SPRING}
         >
@@ -399,12 +430,12 @@ export default function GuestSelectionPage() {
             <motion.div
               animate={{ rotate: 360 }}
               transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
-              className="w-5 h-5 border-2 border-[#1A1816]/30 border-t-[#1A1816] rounded-full"
+              className="w-5 h-5 border-2 border-[#F2A24A]/30 border-t-[#F2A24A] rounded-full"
             />
           ) : (
             <>
-              <span>打开大门 / Start Party</span>
-              <ChevronRight className="w-5 h-5" />
+              <span>单人演示 / Solo (选 {selected.size} 角)</span>
+              <ChevronRight className="w-4 h-4" />
             </>
           )}
         </motion.button>

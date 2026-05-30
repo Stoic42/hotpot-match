@@ -5,7 +5,8 @@ import { GRAB_MISS_LINES, GRAB_WIN_LINES } from "@/lib/pot-grab-lines";
 
 export const POT_COUNTDOWN_MS = 700;
 export const POT_COUNTDOWN_TICKS = 3;
-export const POT_SCRAMBLE_MS = 800;
+/** Auto-resolve scramble if nobody taps in time */
+export const POT_SCRAMBLE_MS = 2800;
 
 export interface PotCookingEntry {
   ingredientId: string;
@@ -25,6 +26,8 @@ export interface PotScrambleState {
   startedAt: string;
   scrambleAt: string | null;
   grabbedBy: string | null;
+  /** Human who tapped 抢 first (maps to grabbedBy guest via session players). */
+  grabbedByClientId: string | null;
   reactions: PotScrambleReaction[];
 }
 
@@ -69,6 +72,7 @@ function resolveScramble(
   sessionId: number,
   guestIds: string[],
   customGuests: CustomAgentDraft[],
+  forcedWinnerId?: string,
 ): SessionPotState {
   const scramble = pot.scramble;
   if (!scramble) return pot;
@@ -81,6 +85,8 @@ function resolveScramble(
   const rand = seededRandom(`${sessionId}:${scramble.ingredientId}:${scramble.startedAt}`);
   const threshold = 0.42;
 
+  let grabbedBy: string | null = forcedWinnerId ?? scramble.grabbedBy ?? null;
+
   const rolls = guestIds
     .map((guestId) => {
       const hungerBoost = Math.min(0.22, (pot.hunger[guestId] ?? 0) / 450);
@@ -91,18 +97,19 @@ function resolveScramble(
     })
     .sort((a, b) => b.roll - a.roll);
 
-  const contenders = rolls.filter((r) => r.roll > threshold);
-  const totalWeight = contenders.reduce((sum, r) => sum + Math.max(0.1, r.roll), 0);
-  let cursor = rand() * totalWeight;
-  let grabbedBy: string | null = null;
-  for (const contender of contenders) {
-    cursor -= Math.max(0.1, contender.roll);
-    if (cursor <= 0) {
-      grabbedBy = contender.guestId;
-      break;
+  if (!grabbedBy) {
+    const contenders = rolls.filter((r) => r.roll > threshold);
+    const totalWeight = contenders.reduce((sum, r) => sum + Math.max(0.1, r.roll), 0);
+    let cursor = rand() * totalWeight;
+    for (const contender of contenders) {
+      cursor -= Math.max(0.1, contender.roll);
+      if (cursor <= 0) {
+        grabbedBy = contender.guestId;
+        break;
+      }
     }
+    grabbedBy ??= contenders[0]?.guestId ?? null;
   }
-  grabbedBy ??= contenders[0]?.guestId ?? null;
 
   const notable = rolls
     .filter((r) => r.guestId === grabbedBy || r.roll > threshold * 0.72)
@@ -144,9 +151,34 @@ function resolveScramble(
       ...scramble,
       phase: "result",
       grabbedBy,
+      grabbedByClientId: scramble.grabbedByClientId,
       reactions,
     },
   };
+}
+
+/** First human tap wins the scramble for their claimed guest. */
+export function applyPlayerGrab(
+  pot: SessionPotState,
+  sessionId: number,
+  guestIds: string[],
+  customGuests: CustomAgentDraft[],
+  guestId: string,
+  clientId: string,
+): SessionPotState | null {
+  const scramble = pot.scramble;
+  if (!scramble || scramble.phase !== "scramble") return null;
+  if (scramble.grabbedBy) return pot;
+
+  const withGrab: SessionPotState = {
+    ...pot,
+    scramble: {
+      ...scramble,
+      grabbedBy: guestId,
+      grabbedByClientId: clientId,
+    },
+  };
+  return resolveScramble(withGrab, sessionId, guestIds, customGuests, guestId);
 }
 
 /** Advance timers & resolve scramble on the server clock. */
@@ -207,6 +239,7 @@ export function tickPotState(
           startedAt: new Date(nowMs).toISOString(),
           scrambleAt: null,
           grabbedBy: null,
+          grabbedByClientId: null,
           reactions: [],
         },
       };

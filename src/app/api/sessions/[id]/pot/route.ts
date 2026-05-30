@@ -3,6 +3,7 @@ import { getClientId } from "@/lib/auth";
 import {
   applyPotAddIngredient,
   applyPotDismissScramble,
+  applyPotGrab,
   tickAndPersistPotState,
 } from "@/lib/db/queries/pot";
 
@@ -40,6 +41,14 @@ export async function POST(
   if (action === "dismiss_scramble") {
     const pot = await applyPotDismissScramble(sessionId);
     return NextResponse.json({ ok: true, pot });
+  }
+
+  if (action === "grab") {
+    const result = await applyPotGrab(sessionId, auth.clientId);
+    if (!result.ok) {
+      return NextResponse.json({ error: result.error }, { status: 409 });
+    }
+    return NextResponse.json({ ok: true, pot: result.pot, guestId: result.guestId });
   }
 
   return NextResponse.json({ error: "Unknown action" }, { status: 400 });

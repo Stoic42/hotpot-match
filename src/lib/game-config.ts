@@ -2,7 +2,10 @@
 export const PARTY_ROUND_SECONDS = 60;
 
 /** Flash all ingredient cook times at round start (memory mini-game) */
-export const MEMORY_FLASH_SECONDS = 3;
+export const MEMORY_FLASH_SECONDS = 10;
+
+/** How long players can tap 抢 during scramble phase */
+export const POT_SCRAMBLE_GRAB_MS = 2800;
 
 export function partySecondsRemaining(
   partyStartedAtMs: number | null,

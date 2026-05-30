@@ -15,6 +15,13 @@
       "when": 1777897800000,
       "tag": "0001_custom_guests",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1777905000000,
+      "tag": "0002_session_players",
+      "breakpoints": true
     }
   ]
 }
