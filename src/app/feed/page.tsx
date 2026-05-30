@@ -725,6 +725,12 @@ function MainFeedInner() {
     setMessages((prev) => [...prev, ...arrivals]);
   }, [guests]);
 
+  // ── redirect if no session id ──
+  useEffect(() => {
+    if (authLoading) return;
+    if (!sessionId) router.push("/");
+  }, [sessionId, authLoading, router]);
+
   // ── auto scroll ──
   useEffect(() => {
     if (feedRef.current) feedRef.current.scrollTop = feedRef.current.scrollHeight;
