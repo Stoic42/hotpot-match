@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HotpotChat — Pitch Deck</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        :root {
+            --black: #0a0a0a;
+            --white: #ffffff;
+            --red: #ff3300;
+            --gray: #888888;
+            --light-gray: #e5e5e5;
+        }
+
+        @font-face {
+            font-family: 'Helvetica';
+            src: local('Helvetica'), local('Arial'), local('sans-serif');
+        }
+
+        body {
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+            background: var(--black);
+            color: var(--white);
+            overflow: hidden;
+        }
+
+        .slide {
+            width: 100vw;
+            height: 100vh;
+            display: none;
+            position: relative;
+            padding: 60px;
+        }
+
+        .slide.active {
+            display: grid;
+        }
+
+        /* Slide 1: Title */
+        .slide-1 {
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr auto 1fr;
+            align-items: center;
+        }
+
+        .slide-1 .main-title {
+            font-size: clamp(80px, 15vw, 200px);
+            font-weight: 900;
+            letter-spacing: -0.04em;
+            line-height: 0.9;
+            text-transform: uppercase;
+        }
+
+        .slide-1 .subtitle {
+            font-size: 24px;
+            font-weight: 400;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: var(--gray);
+            border-top: 1px solid var(--gray);
+            padding-top: 20px;
+            margin-top: 40px;
+        }
+
+        .slide-1 .meta {
+            position: absolute;
+            bottom: 60px;
+            left: 60px;
+            font-size: 14px;
+            color: var(--gray);
+            letter-spacing: 0.1em;
+        }
+
+        /* Slide 2: The Hook */
+        .slide-2 {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto 1fr;
+            gap: 40px;
+        }
+
+        .slide-number {
+            font-size: 14px;
+            color: var(--red);
+            font-weight: 700;
+            letter-spacing: 0.2em;
+        }
+
+        .slide-2 .left-content {
+            grid-column: 1;
+            grid-row: 2;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .slide-2 .right-visual {
+            grid-column: 2;
+            grid-row: 2;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-left: 1px solid var(--gray);
+            padding-left: 40px;
+        }
+
+        .big-quote {
+            font-size: clamp(40px, 6vw, 80px);
+            font-weight: 700;
+            line-height: 1.1;
+            letter-spacing: -0.02em;
+            margin-bottom: 40px;
+        }
+
+        .context-text {
+            font-size: 18px;
+            line-height: 1.6;
+            color: var(--gray);
+            max-width: 400px;
+        }
+
+        .season-box {
+            font-size: 120px;
+            font-weight: 900;
+            text-transform: uppercase;
+            line-height: 0.9;
+        }
+
+        .season-box .summer {
+            color: var(--white);
+        }
+
+        .season-box .winter {
+            color: var(--gray);
+        }
+
+        /* Slide 3: Characters */
+        .slide-3 {
+            grid-template-columns: repeat(6, 1fr);
+            grid-template-rows: auto 1fr;
+            gap: 20px;
+        }
+
+        .slide-3 .slide-header {
+            grid-column: 1 / -1;
+            border-bottom: 1px solid var(--gray);
+            padding-bottom: 20px;
+            margin-bottom: 20px;
+        }
+
+        .character-card {
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            border-right: 1px solid var(--gray);
+            padding-right: 20px;
+        }
+
+        .character-card:last-child {
+            border-right: none;
+        }
+
+        .char-flag {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .char-name {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        .char-trait {
+            font-size: 12px;
+            color: var(--gray);
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 20px;
+        }
+
+        .char-desc {
+            font-size: 13px;
+            line-height: 1.5;
+            color: var(--light-gray);
+        }
+
+        /* Slide 4: Coffee vs Hotpot */
+        .slide-4 {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto 1fr;
+        }
+
+        .slide-4 .slide-header {
+            grid-column: 1 / -1;
+            border-bottom: 1px solid var(--gray);
+            padding-bottom: 20px;
+        }
+
+        .comparison-side {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding: 40px;
+        }
+
+        .comparison-side.left {
+            border-right: 1px solid var(--gray);
+        }
+
+        .comp-title {
+            font-size: 14px;
+            color: var(--gray);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            margin-bottom: 40px;
+        }
+
+        .comp-main {
+            font-size: clamp(60px, 10vw, 120px);
+            font-weight: 900;
+            text-transform: uppercase;
+            line-height: 0.9;
+        }
+
+        .comp-sub {
+            font-size: 18px;
+            color: var(--gray);
+            margin-top: 20px;
+        }
+
+        .vs-divider {
+            position: absolute;
+            left: 50%;
+            top: 50%;
+            transform: translate(-50%, -50%);
+            background: var(--red);
+            color: var(--white);
+            padding: 20px;
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+        }
+
+        /* Slide 5: Mechanic - Memory */
+        .slide-5 {
+            grid-template-columns: 2fr 1fr;
+            grid-template-rows: auto 1fr;
+        }
+
+        .slide-5 .slide-header {
+            grid-column: 1 / -1;
+            border-bottom: 1px solid var(--gray);
+            padding-bottom: 20px;
+            margin-bottom: 40px;
+        }
+
+        .mechanic-content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .mechanic-title {
+            font-size: clamp(40px, 6vw, 72px);
+            font-weight: 900;
+            margin-bottom: 30px;
+            text-transform: uppercase;
+        }
+
+        .mechanic-desc {
+            font-size: 20px;
+            line-height: 1.6;
+            color: var(--light-gray);
+            max-width: 600px;
+        }
+
+        .timer-visual {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            border-left: 1px solid var(--gray);
+        }
+
+        .timer-number {
+            font-size: 120px;
+            font-weight: 900;
+            color: var(--red);
+        }
+
+        .timer-label {
+            font-size: 14px;
+            color: var(--gray);
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+        }
+
+        /* Slide 6: Agent Avatar */
+        .slide-6 {
+            grid-template-columns: 1fr 1fr;
+            grid-template-rows: auto 1fr;
+        }
+
+        .slide-6 .slide-header {
+            grid-column: 1 / -1;
+            border-bottom: 1px solid var(--gray);
+            padding-bottom: 20px;
+        }
+
+        .agent-content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            padding-right: 60px;
+        }
+
+        .agent-title {
+            font-size: clamp(40px, 6vw, 72px);
+            font-weight: 900;
+            margin-bottom: 30px;
+        }
+
+        .agent-title span {
+            color: var(--red);
+        }
+
+        .agent-list {
+            list-style: none;
+            font-size: 18px;
+            line-height: 2;
+            color: var(--light-gray);
+        }
+
+        .agent-list li::before {
+            content: "→";
+            color: var(--red);
+            margin-right: 10px;
+        }
+
+        .agent-visual {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 20px;
+            align-items: center;
+            border-left: 1px solid var(--gray);
+            padding-left: 40px;
+        }
+
+        .avatar-circle {
+            width: 80px;
+            height: 80px;
+            border: 2px solid var(--gray);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 32px;
+        }
+
+        /* Slide 7: Social Manipulation */
+        .slide-7 {
+            grid-template-columns: 1fr;
+            grid-template-rows: auto 1fr auto;
+        }
+
+        .slide-7 .slide-header {
+            border-bottom: 1px solid var(--gray);
+            padding-bottom: 20px;
+        }
+
+        .bombs-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 20px;
+            align-items: center;
+        }
+
+        .bomb-item {
+            border-right: 1px solid var(--gray);
+            padding: 40px 20px;
+            text-align: center;
+        }
+
+        .bomb-item:last-child {
+            border-right: none;
+        }
+
+        .bomb-icon {
+            font-size: 48px;
+            margin-bottom: 20px;
+        }
+
+        .bomb-name {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            margin-bottom: 10px;
+        }
+
+        .bomb-desc {
+            font-size: 12px;
+            color: var(--gray);
+        }
+
+        .mechanic-footer {
+            border-top: 1px solid var(--gray);
+            padding-top: 20px;
+            font-size: 24px;
+            font-weight: 700;
+        }
+
+        /* Slide 8: The Climax */
+        .slide-8 {
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr auto 1fr;
+            text-align: center;
+        }
+
+        .countdown-container {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 40px;
+        }
+
+        .countdown-number {
+            font-size: clamp(150px, 25vw, 300px);
+            font-weight: 900;
+            color: var(--red);
+            line-height: 1;
+        }
+
+        .countdown-label {
+            font-size: 24px;
+            color: var(--gray);
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+        }
+
+        .climax-text {
+            font-size: clamp(30px, 5vw, 60px);
+            font-weight: 700;
+            margin-top: 40px;
+        }
+
+        /* Slide 9: Closing */
+        .slide-9 {
+            grid-template-columns: 1fr;
+            grid-template-rows: 1fr auto auto;
+        }
+
+        .closing-content {
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+        }
+
+        .closing-quote {
+            font-size: clamp(30px, 5vw, 56px);
+            font-weight: 700;
+            line-height: 1.3;
+            max-width: 900px;
+        }
+
+        .closing-quote .highlight {
+            color: var(--red);
+        }
+
+        .qr-section {
+            display: flex;
+            align-items: center;
+            gap: 40px;
+            margin-top: 60px;
+        }
+
+        .qr-code {
+            width: 120px;
+            height: 120px;
+            background: var(--white);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            color: var(--black);
+        }
+
+        .qr-text {
+            font-size: 14px;
+            color: var(--gray);
+            letter-spacing: 0.1em;
+        }
+
+        .footer-info {
+            border-top: 1px solid var(--gray);
+            padding-top: 20px;
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: var(--gray);
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+        }
+
+        /* Navigation */
+        .nav-hint {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 12px;
+            color: var(--gray);
+            letter-spacing: 0.1em;
+        }
+
+        @media (max-width: 768px) {
+            .slide {
+                padding: 30px;
+            }
+
+            .slide-3 {
+                grid-template-columns: repeat(2, 1fr);
+                grid-template-rows: auto repeat(3, 1fr);
+            }
+
+            .character-card {
+                border-right: none;
+                border-bottom: 1px solid var(--gray);
+                padding: 20px 0;
+            }
+
+            .bombs-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+
+            .bomb-item {
+                border-right: none;
+                border-bottom: 1px solid var(--gray);
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- Slide 1: Title -->
+    <div class="slide slide-1 active">
+        <div></div>
+        <div>
+            <h1 class="main-title">Hotpot<br>Chat</h1>
+            <p class="subtitle">Agent-Driven Party Game</p>
+        </div>
+        <div></div>
+        <div class="meta">Vibe Hacks #04 — 60-Second Experience</div>
+    </div>
+
+    <!-- Slide 2: The Hook -->
+    <div class="slide slide-2">
+        <div class="slide-header">
+            <span class="slide-number">01 / HOOK</span>
+        </div>
+        <div class="left-content">
+            <h2 class="big-quote">夏天来了<br>冬天还会远吗</h2>
+            <p class="context-text">大学四年在上海，每年9月开始盼火锅季。但真正的火锅，从来不只是吃——是一场社交兵法。</p>
+        </div>
+        <div class="right-visual">
+            <div class="season-box">
+                <div class="summer">SUMMER</div>
+                <div class="winter">WINTER</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Slide 3: Characters -->
+    <div class="slide slide-3">
+        <div class="slide-header">
+            <span class="slide-number">02 / CHARACTERS</span>
+        </div>
+        <div class="character-card">
+            <div>
+                <div class="char-flag">🇨🇳</div>
+                <div class="char-name">陈师傅</div>
+                <div class="char-trait">火锅原教旨</div>
+            </div>
+            <div class="char-desc">重庆室友，鄙视一切清汤锅。正宗是唯一标准。</div>
+        </div>
+        <div class="character-card">
+            <div>
+                <div class="char-flag">🎌</div>
+                <div class="char-name">悠微</div>
+                <div class="char-trait">政治二次元</div>
+            </div>
+            <div class="char-desc">政治哲学系，酒精过敏但辣椒无敌。用葛兰西理论分析辣度。</div>
+        </div>
+        <div class="character-card">
+            <div>
+                <div class="char-flag">🌍</div>
+                <div class="char-name">Leo</div>
+                <div class="char-trait">ADHD</div>
+            </div>
+            <div class="char-desc">美国交换生，话题跳跃到你跟不上。思维永远在火锅和宇宙之间。</div>
+        </div>
+        <div class="character-card">
+            <div>
+                <div class="char-flag">🇲🇽</div>
+                <div class="char-name">Marta</div>
+                <div class="char-trait">辣椒外交</div>
+            </div>
+            <div class="char-desc">墨西哥学姐。四川辣和墨西哥辣是灵魂亲戚。</div>
+        </div>
+        <div class="character-card">
+            <div>
+                <div class="char-flag">🇺🇸</div>
+                <div class="char-name">Zion</div>
+                <div class="char-trait">牙套青年</div>
+            </div>
+            <div class="char-desc">戴牙套的美国男生，火锅桌上最谨慎的人。只敢吃软食。</div>
+        </div>
+        <div class="character-card">
+            <div>
+                <div class="char-flag">🇷🇺</div>
+                <div class="char-name">Nina</div>
+                <div class="char-trait">严寒专家</div>
+            </div>
+            <div class="char-desc">俄罗斯研究生，话少但能喝。酒量10/10。</div>
+        </div>
+    </div>
+
+    <!-- Slide 4: Coffee vs Hotpot -->
+    <div class="slide slide-4">
+        <div class="slide-header">
+            <span class="slide-number">03 / TREND</span>
+        </div>
+        <div class="comparison-side left">
+            <div class="comp-title">2024 Trend</div>
+            <div class="comp-main">Coffee<br>Chat</div>
+            <div class="comp-sub">异步 · 弱关系 · 边喝边看手机</div>
+        </div>
+        <div class="vs-divider">VS</div>
+        <div class="comparison-side right">
+            <div class="comp-title">Our Answer</div>
+            <div class="comp-main" style="color: var(--red);">Hotpot<br>Chat</div>
+            <div class="comp-sub">同步 · 强制专注 · 不能看手机</div>
+        </div>
+    </div>
+
+    <!-- Slide 5: Memory Mechanic -->
+    <div class="slide slide-5">
+        <div class="slide-header">
+            <span class="slide-number">04 / MECHANIC 01</span>
+        </div>
+        <div class="mechanic-content">
+            <h2 class="mechanic-title">记忆闪记<br>Memory Flash</h2>
+            <p class="mechanic-desc">开局10秒，闪现所有食材的烫熟时间。肥牛15s、毛肚20s、虾滑8s...<br><br>然后倒计时隐藏，全靠记忆。<br><br>考的不是手速，是你对火锅的熟悉程度。</p>
+        </div>
+        <div class="timer-visual">
+            <div class="timer-number">10</div>
+            <div class="timer-label">Seconds</div>
+        </div>
+    </div>
+
+    <!-- Slide 6: Agent Avatar -->
+    <div class="slide slide-6">
+        <div class="slide-header">
+            <span class="slide-number">05 / MECHANIC 02</span>
+        </div>
+        <div class="agent-content">
+            <h2 class="agent-title">训练你的<br><span>Agent 替身</span></h2>
+            <ul class="agent-list">
+                <li>选悠微 → 用政治梗触发她喝酒</li>
+                <li>选陈师傅 → 用辣度之争让他兴奋</li>
+                <li>每个角色有「酒量」和「情绪状态」</li>
+                <li>你的替身会被激怒、会分心、会喝倒</li>
+            </ul>
+        </div>
+        <div class="agent-visual">
+            <div class="avatar-circle">😤</div>
+            <div class="avatar-circle">🥴</div>
+            <div class="avatar-circle">😵</div>
+            <div class="avatar-circle">🤩</div>
+            <div class="avatar-circle">😴</div>
+            <div class="avatar-circle">🤢</div>
+        </div>
+    </div>
+
+    <!-- Slide 7: Social Manipulation -->
+    <div class="slide slide-7">
+        <div class="slide-header">
+            <span class="slide-number">06 / MECHANIC 03</span>
+        </div>
+        <div class="bombs-grid">
+            <div class="bomb-item">
+                <div class="bomb-icon">🌶️</div>
+                <div class="bomb-name">辣度之争</div>
+                <div class="bomb-desc">Spice Supremacy</div>
+            </div>
+            <div class="bomb-item">
+                <div class="bomb-icon">🗳️</div>
+                <div class="bomb-name">政治风暴</div>
+                <div class="bomb-desc">Political Debate</div>
+            </div>
+            <div class="bomb-item">
+                <div class="bomb-icon">⚡</div>
+                <div class="bomb-name">二次元入侵</div>
+                <div class="bomb-desc">Anime Intervention</div>
+            </div>
+            <div class="bomb-item">
+                <div class="bomb-icon">🍜</div>
+                <div class="bomb-name">美食之争</div>
+                <div class="bomb-desc">Food Supremacy</div>
+            </div>
+            <div class="bomb-item">
+                <div class="bomb-icon">🍺</div>
+                <div class="bomb-name">酒局开始</div>
+                <div class="bomb-desc">Drinking Challenge</div>
+            </div>
+        </div>
+        <div class="mechanic-footer">
+            话题炸弹 → Agent 情绪爆发 → 该轮无法夹菜 → 你趁机猛吃
+        </div>
+    </div>
+
+    <!-- Slide 8: The Climax -->
+    <div class="slide slide-8">
+        <div></div>
+        <div>
+            <div class="countdown-container">
+                <div class="countdown-number">3</div>
+                <div class="countdown-number">2</div>
+                <div class="countdown-number">1</div>
+            </div>
+            <div class="countdown-label">The Scramble</div>
+            <div class="climax-text">拼手速。拼记忆。拼策略。</div>
+        </div>
+        <div></div>
+    </div>
+
+    <!-- Slide 9: Closing -->
+    <div class="slide slide-9">
+        <div class="closing-content">
+            <h2 class="closing-quote">
+                冬天快到了，火锅局要组起来了。<br><br>
+                但这一次，你可以提前训练你的 <span class="highlight">Agent 替身</span>——<br>
+                让它替你在酒桌上不丢脸，在饭局上吃得饱。
+            </h2>
+            <div class="qr-section">
+                <div class="qr-code">QR</div>
+                <div class="qr-text">扫码组一局<br>hot-pot.ton-ton.fun</div>
+            </div>
+        </div>
+        <div class="footer-info">
+            <span>HotpotChat — Vibe Hacks #04</span>
+            <span>60s · Agent · Strategy</span>
+        </div>
+    </div>
+
+    <div class="nav-hint">← → 或点击切换</div>
+
+    <script>
+        let currentSlide = 0;
+        const slides = document.querySelectorAll('.slide');
+        const totalSlides = slides.length;
+
+        function showSlide(index) {
+            slides.forEach((slide, i) => {
+                slide.classList.toggle('active', i === index);
+            });
+        }
+
+        function nextSlide() {
+            currentSlide = (currentSlide + 1) % totalSlides;
+            showSlide(currentSlide);
+        }
+
+        function prevSlide() {
+            currentSlide = (currentSlide - 1 + totalSlides) % totalSlides;
+            showSlide(currentSlide);
+        }
+
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'ArrowRight' || e.key === ' ') {
+                nextSlide();
+            } else if (e.key === 'ArrowLeft') {
+                prevSlide();
+            }
+        });
+
+        document.addEventListener('click', nextSlide);
+    </script>
+</body>
+</html>
