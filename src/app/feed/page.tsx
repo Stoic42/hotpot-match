@@ -954,8 +954,8 @@ function MainFeedInner() {
 
   // ── Drink battle ──
   const handleDrinkBattle = () => {
-    const pool = guests.length >= 2 ? guests : guests;
-    const [f1, f2] = pool.length >= 2 ? [pool[0], pool[1]] : [guests[0], guests[0]];
+    if (guests.length < 2) return;
+    const [f1, f2] = guests.length >= 2 ? [guests[0], guests[1]] : [guests[0], guests[0]];
     setPaused(true);
     setDrinkBattle({
       open: true, fighter1: f1, fighter2: f2, hp1: 100, hp2: 100,
@@ -1138,11 +1138,13 @@ function MainFeedInner() {
           </motion.button>
 
           <motion.button whileTap={{ scale: 0.93 }} onClick={handleDrinkBattle}
-            className="flex-1 flex flex-col items-center justify-center space-y-1 text-[#78716C] hover:text-[#F5F1E8] transition-colors">
+            className={`flex-1 flex flex-col items-center justify-center space-y-1 transition-colors ${
+              guests.length < 2 ? "text-white/20 cursor-not-allowed" : "text-[#78716C] hover:text-[#F5F1E8]"
+            }`}>
             <div className="w-10 h-10 rounded-full bg-[#1A1816] border border-white/10 flex items-center justify-center shadow-sm">
               <Coffee className="w-5 h-5" />
             </div>
-            <span className="text-[10px] font-bold uppercase tracking-widest">拼酒 Battle</span>
+            <span className="text-[10px] font-bold uppercase tracking-widest">{guests.length < 2 ? "需2人+ Need 2+" : "拼酒 Battle"}</span>
           </motion.button>
 
           <motion.button whileTap={{ scale: 0.95 }} onClick={() => setPaused((p) => !p)}
