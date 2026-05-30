@@ -183,6 +183,12 @@ export default function GuestSelectionPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ guestIds: Array.from(selected) }),
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        console.error("Failed to start session", errData);
+        setStarting(false);
+        return;
+      }
       const session = await res.json();
       router.push(`/feed?session=${session.id}`);
     } catch (err) {
