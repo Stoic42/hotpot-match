@@ -174,7 +174,11 @@ function MenuPrepInner() {
   const handleConfirm = () => {
     setDropped(true);
     setTimeout(() => {
-      router.back();
+      if (sessionId) {
+        router.push(`/feed?session=${sessionId}`);
+      } else {
+        router.push("/");
+      }
     }, 800);
   };
 
@@ -192,7 +196,13 @@ function MenuPrepInner() {
         </div>
         <motion.button
           whileTap={{ scale: TAP_SCALE }}
-          onClick={() => router.back()}
+          onClick={() => {
+            if (sessionId) {
+              router.push(`/feed?session=${sessionId}`);
+            } else {
+              router.back();
+            }
+          }}
           className="w-10 h-10 flex items-center justify-center rounded-full bg-white/5 border border-white/10 text-[#A8A29E] hover:bg-white/10"
         >
           <X className="w-5 h-5" />
