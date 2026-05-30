@@ -4,12 +4,9 @@ import { getMessages, addMessage } from "@/lib/db/queries/sessions";
 
 // GET /api/sessions/[id]/messages
 export async function GET(
-  request: NextRequest,
+  _request: NextRequest,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  const auth = getClientId(request);
-  if (!auth.ok) return auth.response;
-
   const { id } = await params;
   const sessionId = parseInt(id, 10);
   if (isNaN(sessionId)) return NextResponse.json({ error: "Invalid session id" }, { status: 400 });

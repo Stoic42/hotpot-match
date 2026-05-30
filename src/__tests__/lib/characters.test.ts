@@ -60,7 +60,7 @@ describe("CHARACTER_MAP", () => {
 
 describe("TOPIC_BOMBS", () => {
   test("has 5 topic bombs", () => {
-    expect(TOPIC_BOMBS).toHaveLength(5);
+    expect(TOPIC_BOMBS).toHaveLength(6);
   });
 
   test("each topic bomb has required fields", () => {

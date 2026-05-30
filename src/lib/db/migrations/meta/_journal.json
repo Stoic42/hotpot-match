@@ -8,6 +8,13 @@
       "when": 1777891561071,
       "tag": "0000_shocking_mikhail_rasputin",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1777897800000,
+      "tag": "0001_custom_guests",
+      "breakpoints": true
     }
   ]
 }

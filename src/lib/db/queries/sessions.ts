@@ -2,11 +2,16 @@ import { eq, desc, and } from "drizzle-orm";
 import { db } from "../client";
 import { sessions, messages } from "../schema/sessions";
 import type { Session, Message } from "../schema/sessions";
+import type { CustomAgentDraft } from "@/lib/custom-agent";
 
-export async function createSession(userId: string, guestIds: string[]): Promise<Session> {
+export async function createSession(
+  userId: string,
+  guestIds: string[],
+  customGuests: CustomAgentDraft[] = [],
+): Promise<Session> {
   const rows = await db
     .insert(sessions)
-    .values({ userId, guestIds, status: "active" })
+    .values({ userId, guestIds, customGuests, status: "active" })
     .returning();
   return rows[0];
 }
@@ -21,8 +26,32 @@ export async function getActiveSession(userId: string): Promise<Session | null> 
   return rows[0] ?? null;
 }
 
+export async function getSessionById(id: number): Promise<Session | null> {
+  const rows = await db.select().from(sessions).where(eq(sessions.id, id)).limit(1);
+  return rows[0] ?? null;
+}
+
+/** Idempotent — first client to finish memory flash starts the shared clock. */
+export async function startRound(id: number): Promise<Session | null> {
+  const existing = await getSessionById(id);
+  if (!existing) return null;
+  if (existing.roundStartedAt) return existing;
+
+  const now = new Date();
+  const rows = await db
+    .update(sessions)
+    .set({ roundStartedAt: now, updatedAt: now })
+    .where(eq(sessions.id, id))
+    .returning();
+  return rows[0] ?? null;
+}
+
 export async function endSession(id: number): Promise<void> {
-  await db.update(sessions).set({ status: "ended", updatedAt: new Date() }).where(eq(sessions.id, id));
+  const now = new Date();
+  await db
+    .update(sessions)
+    .set({ status: "ended", roundEndedAt: now, updatedAt: now })
+    .where(eq(sessions.id, id));
 }
 
 export async function addMessage(

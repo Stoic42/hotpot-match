@@ -3,20 +3,19 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { motion } from "framer-motion";
-import { CHARACTER_MAP, CHARACTERS } from "@/lib/characters";
+import { CHARACTER_MAP } from "@/lib/characters";
 import { request } from "@/lib/api/request";
 import { useClientId } from "@/components/client-id-provider";
-import { Share2, RotateCcw } from "lucide-react";
-
-// ── Types ──────────────────────────────────────────────────────────────────────
-interface SessionStats {
-  guestId: string;
-  messageCount: number;
-  ingredientsEaten: number;
-  hunger: number;     // 0–100
-  drinkScore: number; // 0–100
-  chaosScore: number; // 0–100
-}
+import { buildCharacterMap } from "@/lib/character-registry";
+import type { CustomAgentDraft } from "@/lib/custom-agent";
+import {
+  buildSessionStats,
+  computeHotpotScore,
+  computePartyScore,
+  pickHighlightMoment,
+  type SessionStats,
+} from "@/lib/party-scoring";
+import { Share2, RotateCcw, Trophy } from "lucide-react";
 
 // Chen's letter grade thresholds
 function getChenGrade(score: number): { grade: string; comment: string } {
@@ -83,8 +82,16 @@ function ScoreDial({ value, label, color }: { value: number; label: string; colo
 }
 
 // ── Guest row ──────────────────────────────────────────────────────────────────
-function GuestRow({ stat, delay }: { stat: SessionStats; delay: number }) {
-  const char = CHARACTER_MAP[stat.guestId];
+function GuestRow({
+  stat,
+  delay,
+  charMap,
+}: {
+  stat: SessionStats;
+  delay: number;
+  charMap: Record<string, { name: string; flag: string; tagline: string }>;
+}) {
+  const char = charMap[stat.guestId] ?? CHARACTER_MAP[stat.guestId];
   if (!char) return null;
 
   const headline = stat.hunger > 70
@@ -153,74 +160,98 @@ function VerdictInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const sessionId = searchParams.get("session");
+  const cookedParam = searchParams.get("cooked") ?? "0";
 
   const { clientId, loading: authLoading } = useClientId();
 
   const [stats, setStats] = useState<SessionStats[]>([]);
-  const [guestIds, setGuestIds] = useState<string[]>([]);
   const [totalMessages, setTotalMessages] = useState(0);
   const [ingredientsCooked, setIngredientsCooked] = useState(
-    parseInt(searchParams.get("cooked") ?? "0", 10)
+    parseInt(cookedParam, 10)
   );
   const [loading, setLoading] = useState(true);
+  const [hotpotScore, setHotpotScore] = useState(0);
+  const [highlightQuote, setHighlightQuote] = useState<string | null>(null);
+  const [highlightGuestId, setHighlightGuestId] = useState<string | null>(null);
+  const [charMap, setCharMap] = useState<Record<string, { name: string; flag: string; tagline: string }>>({});
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!sessionId || authLoading || !clientId) return;
+    if (!sessionId || authLoading) return;
 
-    // Load session + messages to compute stats
-    Promise.all([
-      request(`/api/sessions`).then((r) => r.json()),
-      request(`/api/sessions/${sessionId}/messages`).then((r) => r.json()),
-    ]).then(([session, msgs]) => {
-      const ids: string[] = session?.guestIds ?? [];
-      setGuestIds(ids);
-
-      const msgArr = Array.isArray(msgs) ? msgs : [];
-      setTotalMessages(msgArr.length);
-
-      // Build per-guest stats
-      const built: SessionStats[] = ids.map((id) => {
-        const guestMsgs = msgArr.filter((m: { guestId: string }) => m.guestId === id);
-        const char = CHARACTER_MAP[id];
-        // Deterministic but varied scores based on character traits
-        const baseHunger = char?.traits.includes("Braces") ? 55
-          : char?.id === "leo" ? 45
-          : char?.id === "chen" ? 20
-          : 35;
-        const baseChaos = char?.id === "leo" ? 85
-          : char?.id === "youwei" ? 75
-          : char?.id === "chen" ? 60
-          : 40;
-        const baseDrink = char?.alcoholAllergy ? 0
-          : (char?.drinkingPower ?? 5) * 10;
-
-        // Use character traits for deterministic ingredientsEaten instead of Math.random
-        const grabSpeed = char?.id === "chen" ? 0.9 : char?.id === "youwei" ? 0.8 : char?.id === "marta" ? 0.7 : char?.id === "nina" ? 0.65 : char?.id === "zion" ? 0.4 : 0.3;
-        const baseEaten = Math.floor(ingredientsCooked / Math.max(1, ids.length));
-        const bonusEaten = grabSpeed > 0.5 && ingredientsCooked > ids.length ? 1 : 0;
-        return {
-          guestId: id,
-          messageCount: guestMsgs.length,
-          ingredientsEaten: Math.max(0, baseEaten + bonusEaten),
-          hunger: Math.min(100, baseHunger + (ingredientsCooked < 3 ? 30 : 0)),
-          drinkScore: Math.min(100, baseDrink),
-          chaosScore: Math.min(100, baseChaos + guestMsgs.length * 2),
-        };
-      });
-
-      setStats(built);
+    const sid = parseInt(sessionId, 10);
+    if (Number.isNaN(sid)) {
+      setError("Invalid session id.");
       setLoading(false);
-    }).catch(() => setLoading(false));
-  }, [sessionId, clientId, authLoading, ingredientsCooked]);
+      return;
+    }
 
-  // Overall party score
-  const overallScore = stats.length > 0
-    ? Math.round(
-        (stats.reduce((a, s) => a + s.chaosScore, 0) / stats.length) * 0.4 +
-        (totalMessages > 10 ? 70 : totalMessages * 7) * 0.3 +
-        (ingredientsCooked > 3 ? 80 : ingredientsCooked * 20) * 0.3
-      )
-    : 0;
+    Promise.all([
+      request(`/api/sessions/${sessionId}`).then(async (r) => {
+        if (!r.ok) throw new Error(`Session request failed: ${r.status}`);
+        return r.json();
+      }),
+      request(`/api/sessions/${sessionId}/messages`).then(async (r) => {
+        if (!r.ok) throw new Error(`Messages request failed: ${r.status}`);
+        return r.json();
+      }),
+    ])
+      .then(async ([session, msgs]) => {
+        const ids: string[] = session?.guestIds ?? [];
+        const cookedFromPot = session?.pot?.cookedCount;
+        if (typeof cookedFromPot === "number" && cookedFromPot > 0) {
+          setIngredientsCooked(cookedFromPot);
+        }
+
+        const customs = (session?.customGuests ?? []) as CustomAgentDraft[];
+        const map = buildCharacterMap(customs);
+        setCharMap(map);
+
+        const msgArr = (Array.isArray(msgs) ? msgs : []) as {
+          guestId: string;
+          content: string;
+          messageType: string;
+        }[];
+        setTotalMessages(msgArr.length);
+
+        const cooked =
+          typeof session?.pot?.cookedCount === "number"
+            ? session.pot.cookedCount
+            : parseInt(cookedParam, 10);
+        const built = buildSessionStats(ids, msgArr, cooked);
+        setStats(built);
+
+        const partyScore = computePartyScore(built, msgArr.length, cooked);
+        const hp = computeHotpotScore(built, partyScore, cooked);
+        setHotpotScore(hp);
+
+        const hl = pickHighlightMoment(msgArr, ids);
+        setHighlightQuote(hl.quote);
+        setHighlightGuestId(hl.guestId);
+
+        if (clientId) {
+          request("/api/leaderboard", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              sessionId: sid,
+              ingredientsCooked: cooked,
+            }),
+          }).catch(() => {});
+        }
+
+        setLoading(false);
+      })
+      .catch((err) => {
+        setError(err instanceof Error ? err.message : "Unable to load verdict.");
+        setLoading(false);
+      });
+  }, [sessionId, clientId, authLoading, cookedParam]);
+
+  const overallScore =
+    stats.length > 0
+      ? computePartyScore(stats, totalMessages, ingredientsCooked)
+      : 0;
 
   const chenGrade = getChenGrade(overallScore);
   const totalChaos = stats.reduce((a, s) => a + s.chaosScore, 0) / Math.max(1, stats.length);
@@ -232,6 +263,25 @@ function VerdictInner() {
         <div className="text-center">
           <motion.div className="text-4xl mb-4" animate={{ rotate: 360 }} transition={{ duration: 2, repeat: Infinity, ease: "linear" }}>🗞</motion.div>
           <p className="text-[#78716C] text-sm font-medium uppercase tracking-widest">印刷中… Printing verdict…</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="min-h-svh bg-[#0E0C0A] text-[#F5F1E8] flex items-center justify-center px-6">
+        <div className="max-w-sm text-center">
+          <div className="text-4xl mb-4">🗞</div>
+          <h1 className="text-xl font-black text-[#F2A24A] mb-2">Verdict 没印出来</h1>
+          <p className="text-sm text-[#A8A29E] leading-relaxed mb-5">{error}</p>
+          <button
+            type="button"
+            onClick={() => router.push("/")}
+            className="w-full py-3 rounded-xl bg-[#F2A24A] text-[#0E0C0A] font-black text-sm uppercase tracking-widest"
+          >
+            回到首页
+          </button>
         </div>
       </div>
     );
@@ -286,7 +336,8 @@ function VerdictInner() {
         transition={{ delay: 0.4 }}
         className="px-6 py-5 border-b border-white/10 flex items-center justify-around"
       >
-        <ScoreDial value={overallScore} label="Party Score" color="#F2A24A" />
+        <ScoreDial value={hotpotScore} label="火锅味" color="#F2A24A" />
+        <ScoreDial value={overallScore} label="Party" color="#9CB48A" />
         <ScoreDial value={Math.round(totalChaos)} label="Chaos" color="#C0392B" />
         <ScoreDial value={ingredientsCooked * 12} label="Food Score" color="#9CB48A" />
         <ScoreDial value={Math.round(100 - totalHunger)} label="Full" color="#F5BE00" />
@@ -305,7 +356,7 @@ function VerdictInner() {
       <div className="px-6 pb-6 flex-1">
         {stats.length > 0 ? (
           stats.map((stat, i) => (
-            <GuestRow key={stat.guestId} stat={stat} delay={0.5 + i * 0.1} />
+            <GuestRow key={stat.guestId} stat={stat} delay={0.5 + i * 0.1} charMap={charMap} />
           ))
         ) : (
           <div className="text-center py-8 text-[#78716C] text-sm">
@@ -314,22 +365,29 @@ function VerdictInner() {
         )}
       </div>
 
-      {/* Pull quote */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 1 }}
-        className="mx-6 mb-6 border-l-4 border-[#F2A24A] pl-4"
-      >
-        <p className="text-sm font-bold italic text-[#A8A29E] leading-relaxed">
-          "{totalMessages > 15
-            ? "An evening of exceptional chaos. The pot demanded more attention than it received."
-            : totalMessages > 8
-            ? "A respectable showing. Several opinions were expressed. Most were wrong."
-            : "A quiet table. Suspicious. Chen remains unsatisfied."}"
-        </p>
-        <p className="text-[10px] font-black uppercase tracking-widest text-[#78716C] mt-1">— The Editors</p>
-      </motion.div>
+      {highlightQuote && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 1 }}
+          className="mx-6 mb-6 border-l-4 border-[#F2A24A] pl-4"
+        >
+          <p className="text-[9px] font-black uppercase tracking-widest text-[#F2A24A] mb-1">
+            精彩瞬间 · Highlight
+            {highlightGuestId && charMap[highlightGuestId]
+              ? ` — ${charMap[highlightGuestId].name}`
+              : highlightGuestId && CHARACTER_MAP[highlightGuestId]
+              ? ` — ${CHARACTER_MAP[highlightGuestId].name}`
+              : ""}
+          </p>
+          <p className="text-sm font-bold italic text-[#A8A29E] leading-relaxed">
+            &ldquo;{highlightQuote}&rdquo;
+          </p>
+          <p className="text-[10px] font-black uppercase tracking-widest text-[#78716C] mt-1">
+            已提交全球火锅味榜 · 得分 {hotpotScore}
+          </p>
+        </motion.div>
+      )}
 
       {/* Footer actions */}
       <div
@@ -350,10 +408,21 @@ function VerdictInner() {
         <motion.button
           initial={{ opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 1.15 }}
+          whileTap={{ scale: 0.97 }}
+          onClick={() => router.push("/leaderboard")}
+          className="w-full py-3 rounded-xl border border-[#F2A24A]/40 text-[#F2A24A] text-sm font-bold flex items-center justify-center gap-2"
+        >
+          <Trophy className="w-4 h-4" />
+          <span>全球火锅味榜 Leaderboard</span>
+        </motion.button>
+        <motion.button
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 1.2 }}
           whileTap={{ scale: 0.97 }}
           onClick={() => {
-            const text = `Tonight's Hotpot Party: ${guestIds.map(id => CHARACTER_MAP[id]?.name).join(", ")} — Chen graded it ${chenGrade.grade}. "${chenGrade.comment}" 🍲`;
+            const text = `火锅局火锅味 ${hotpotScore} 分 — Chen ${chenGrade.grade}：「${chenGrade.comment}」${highlightQuote ? ` 精彩瞬间：${highlightQuote}` : ""} 🍲`;
             if (navigator.share) {
               navigator.share({ title: "Hotpot Party Verdict", text }).catch(() => {});
             } else {

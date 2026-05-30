@@ -1,12 +1,20 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { CHARACTERS, type Character } from "@/lib/characters";
 import { request } from "@/lib/api/request";
 import { useClientId } from "@/components/client-id-provider";
-import { AlertTriangle, ChevronRight, Plus, Check, Users } from "lucide-react";
+import { CustomAgentCreator } from "@/components/custom-agent-creator";
+import {
+  loadCustomAgents,
+  saveSessionCustomAgents,
+  type CustomAgentDraft,
+} from "@/lib/custom-agent";
+import { listSelectableCharacters } from "@/lib/character-registry";
+import { BALANCE_BUDGET } from "@/lib/character-balance";
+import { AlertTriangle, ChevronRight, Plus, Check, Users, Sparkles, Trophy } from "lucide-react";
 
 const MAX_GUESTS = 5;
 const SPRING = { type: "spring" as const, stiffness: 280, damping: 35 };
@@ -109,9 +117,36 @@ function CharacterCard({
           {character.chineseTagline} / {character.tagline}
         </span>
 
-        {/* Portrait area */}
-        <div className="flex-1 w-full bg-black/25 rounded-xl mb-4 flex items-center justify-center overflow-hidden relative">
-          <CharacterPortrait id={character.id} />
+        {/* Skills (turn-based drink bout) */}
+        <div className="flex-1 w-full bg-black/25 rounded-xl mb-3 p-2.5 flex flex-col justify-end gap-1.5 min-h-[100px]">
+          {character.skills.length > 0 ? (
+            character.skills.map((s) => (
+              <div key={s.id} className="flex items-center gap-2">
+                <span className="text-sm">{s.icon}</span>
+                <div className="min-w-0">
+                  <div className="text-[9px] font-black text-white/80 uppercase tracking-widest">
+                    {s.nameCN}
+                  </div>
+                  <div className="text-[8px] text-white/50 leading-tight line-clamp-1">
+                    {s.description}
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <span className="text-[9px] text-white/40">无战斗技能</span>
+          )}
+        </div>
+
+        <div className="flex items-center gap-2 mb-2 w-full">
+          <span className="text-[7px] text-[#78716C] uppercase tracking-widest shrink-0">酒量</span>
+          <div className="flex-1 h-1 bg-white/10 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full bg-[#F2A24A]"
+              style={{ width: `${character.drinkingPower * 10}%` }}
+            />
+          </div>
+          <span className="text-[7px] text-[#78716C]">{character.drinkingPower}/10</span>
         </div>
 
         {/* Traits */}
@@ -156,6 +191,15 @@ export default function GuestSelectionPage() {
   const { clientId, loading: authLoading } = useClientId();
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [starting, setStarting] = useState(false);
+  const [customAgents, setCustomAgents] = useState<CustomAgentDraft[]>([]);
+  const [creatorOpen, setCreatorOpen] = useState(false);
+  const [joinSessionId, setJoinSessionId] = useState("");
+
+  useEffect(() => {
+    setCustomAgents(loadCustomAgents());
+  }, [creatorOpen]);
+
+  const roster = listSelectableCharacters(customAgents);
 
   const toggle = useCallback(
     (id: string) => {
@@ -181,7 +225,10 @@ export default function GuestSelectionPage() {
       const res = await request("/api/sessions", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ guestIds: Array.from(selected) }),
+        body: JSON.stringify({
+          guestIds: Array.from(selected),
+          customGuests: customAgents.filter((a) => selected.has(a.id)),
+        }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -190,6 +237,7 @@ export default function GuestSelectionPage() {
         return;
       }
       const session = await res.json();
+      saveSessionCustomAgents(String(session.id), customAgents.filter((a) => selected.has(a.id)));
       router.push(`/feed?session=${session.id}`);
     } catch (err) {
       console.error("Failed to start session", err);
@@ -197,7 +245,7 @@ export default function GuestSelectionPage() {
     }
   };
 
-  const selectedList = CHARACTERS.filter((c) => selected.has(c.id));
+  const selectedList = roster.filter((c) => selected.has(c.id));
   const emptySlots = MAX_GUESTS - selectedList.length;
 
   if (authLoading) {
@@ -221,22 +269,71 @@ export default function GuestSelectionPage() {
     <div className="min-h-svh bg-[#1A1816] flex flex-col relative overflow-hidden">
       {/* Header */}
       <div className="px-6 pt-10 pb-4 shrink-0 z-20">
-        <h1 className="text-3xl font-black tracking-tight text-[#F2A24A] mb-1">
-          组局邀约{" "}
-          <span className="text-[#A8A29E] font-normal text-xl">
-            / Guest List
-          </span>
-        </h1>
+        <div className="flex items-start justify-between gap-3 mb-1">
+          <h1 className="text-3xl font-black tracking-tight text-[#F2A24A]">
+            组局邀约{" "}
+            <span className="text-[#A8A29E] font-normal text-xl">
+              / Guest List
+            </span>
+          </h1>
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            onClick={() => router.push("/leaderboard")}
+            className="shrink-0 mt-1 px-2.5 py-1.5 rounded-lg border border-[#F2A24A]/30 text-[#F2A24A] text-[10px] font-black uppercase tracking-wider flex items-center gap-1"
+          >
+            <Trophy className="w-3.5 h-3.5" />
+            火锅味榜
+          </motion.button>
+        </div>
         <p className="text-[#78716C] text-sm font-medium leading-relaxed">
-          挑选今晚的派对阵容。当心跨文化碰撞！
+          11 位预设嘉宾各有 2 个战斗技能；一分钟闪记后抢菜 · Feed 里回合制拼酒。
           <br />
-          Select your mix of chaos and connection.
+          开局后复制 Feed 链接多人同桌 · 服务端统一计时。
         </p>
+        <motion.button
+          whileTap={{ scale: 0.97 }}
+          onClick={() => setCreatorOpen(true)}
+          className="mt-3 inline-flex items-center gap-2 px-3 py-1.5 rounded-full border border-[#F2A24A]/40 text-[#F2A24A] text-xs font-black uppercase tracking-widest"
+        >
+          <Sparkles className="w-3.5 h-3.5" />
+          捏一个 Agent
+        </motion.button>
+        <div className="mt-4 flex gap-2 items-center">
+          <input
+            type="text"
+            inputMode="numeric"
+            placeholder="房间号 session id"
+            value={joinSessionId}
+            onChange={(e) => setJoinSessionId(e.target.value.replace(/\D/g, ""))}
+            className="flex-1 min-w-0 px-3 py-2 rounded-lg bg-[#221F1C] border border-white/10 text-sm text-[#F5F1E8] placeholder:text-[#78716C]"
+          />
+          <motion.button
+            whileTap={{ scale: 0.97 }}
+            disabled={!joinSessionId}
+            onClick={() => router.push(`/feed?session=${joinSessionId}`)}
+            className="shrink-0 px-4 py-2 rounded-lg text-xs font-black uppercase tracking-widest bg-indigo-600/80 text-white disabled:opacity-30"
+          >
+            加入房间
+          </motion.button>
+        </div>
       </div>
+
+      <CustomAgentCreator
+        open={creatorOpen}
+        onClose={() => setCreatorOpen(false)}
+        onSaved={(draft) => {
+          setCustomAgents(loadCustomAgents());
+          setSelected((prev) => {
+            const next = new Set(prev);
+            if (next.size < MAX_GUESTS) next.add(draft.id);
+            return next;
+          });
+        }}
+      />
 
       {/* Card Deck */}
       <div className="flex-1 w-full overflow-x-auto no-scrollbar snap-x snap-mandatory flex items-center px-6 pb-36 space-x-4">
-        {CHARACTERS.map((character) => (
+        {roster.map((character) => (
           <CharacterCard
             key={character.id}
             character={character}

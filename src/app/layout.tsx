@@ -1,15 +1,7 @@
 import type { Metadata } from "next";
-import { Noto_Sans_SC } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/sonner";
 import { ClientIdProvider } from "@/components/client-id-provider";
-
-const notoSansSC = Noto_Sans_SC({
-  subsets: ["latin"],
-  weight: ["400", "500", "700", "900"],
-  variable: "--font-noto-sc",
-  display: "swap",
-});
 
 export const metadata: Metadata = {
   title: "Hotpot Party",
@@ -22,8 +14,8 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="zh-CN" className={notoSansSC.variable}>
-      <body>
+    <html lang="zh-CN" suppressHydrationWarning>
+      <body suppressHydrationWarning>
         <ClientIdProvider>
           {children}
           <Toaster />
