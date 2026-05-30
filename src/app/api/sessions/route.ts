@@ -12,8 +12,14 @@ export async function POST(request: NextRequest) {
   const body = await request.json();
   const { guestIds } = body as { guestIds: string[] };
 
+  const MAX_GUESTS = 5;
+
   if (!Array.isArray(guestIds) || guestIds.length < 1) {
     return NextResponse.json({ error: "At least 1 guest required" }, { status: 400 });
+  }
+
+  if (guestIds.length > MAX_GUESTS) {
+    return NextResponse.json({ error: `Maximum ${MAX_GUESTS} guests allowed` }, { status: 400 });
   }
 
   // Validate all guest IDs exist
