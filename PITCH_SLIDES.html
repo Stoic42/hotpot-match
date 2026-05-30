@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>火锅派对 · Vibe Hacks #04 路演</title>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;700;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #1a1410;
+      --text: #fff8f0;
+      --muted: #c9b8a8;
+      --accent: #f25c3a;
+      --gold: #f2a24a;
+      --green: #7dd87d;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: "Noto Sans SC", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      overflow: hidden;
+      height: 100vh;
+    }
+    .slide {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      padding: 64px 96px;
+      opacity: 0;
+      visibility: hidden;
+      transition: opacity .5s ease;
+      text-align: center;
+    }
+    .slide.active { opacity: 1; visibility: visible; }
+    h1 { font-size: clamp(2.4rem, 5vw, 4.2rem); line-height: 1.15; margin-bottom: 24px; }
+    h2 { font-size: clamp(1.6rem, 3vw, 2.4rem); color: var(--gold); margin-bottom: 20px; }
+    p, li { font-size: clamp(1.1rem, 2vw, 1.5rem); line-height: 1.6; color: var(--muted); max-width: 920px; }
+    ul { list-style: none; text-align: left; max-width: 820px; }
+    li { margin: 12px 0; padding-left: 28px; position: relative; }
+    li::before { content: "🔥"; position: absolute; left: 0; }
+    .tag { display: inline-block; background: rgba(242,92,58,.2); color: var(--accent); padding: 8px 16px; border-radius: 999px; font-size: .95rem; margin-bottom: 20px; }
+    .big-quote { font-size: clamp(1.4rem, 2.8vw, 2rem); color: var(--text); font-weight: 700; }
+    .grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px; width: min(920px, 100%); margin-top: 24px; }
+    .card { background: rgba(255,255,255,.06); border: 1px solid rgba(242,162,74,.25); border-radius: 16px; padding: 20px; text-align: left; }
+    .card strong { color: var(--gold); display: block; margin-bottom: 8px; }
+    .qr { font-size: 1.2rem; color: var(--green); margin-top: 24px; word-break: break-all; }
+    .footer { position: fixed; bottom: 20px; right: 28px; color: #666; font-size: .9rem; }
+    .hint { position: fixed; bottom: 20px; left: 28px; color: #666; font-size: .85rem; }
+  </style>
+</head>
+<body>
+  <section class="slide active">
+    <div class="tag">Vibe Hacks #04 · 3 分钟路演</div>
+    <h1>火锅派对<br><span style="color:var(--gold)">Hotpot Match</span></h1>
+    <p class="big-quote">火锅是中国人的社交战场。<br>我们用 Agent 把它做成 60 秒卡牌策略游戏。</p>
+  </section>
+
+  <section class="slide">
+    <h2>一句话定位</h2>
+    <p class="big-quote">火锅场景 × Agent 角色 × 记忆闪记 × 卡牌策略<br>—— 1 分钟派对游戏</p>
+    <p style="margin-top:24px">关键词：一分钟 · Agent 驱动 · 中国社交兵法 · 真的会玩</p>
+  </section>
+
+  <section class="slide">
+    <h2>核心玩法（60 秒一局）</h2>
+    <ul>
+      <li>开局 10 秒闪记：记住每种食材烫熟秒数，之后锅里不再显示倒计时</li>
+      <li>下锅 + 话题炸弹：用政治/排辈/辣度触发 Agent 情绪</li>
+      <li>拼酒 / 打牌：让对手分心，自己趁机抢菜</li>
+      <li>3-2-1 抢菜：拼手速，早抢生肉 0 分，完美时机 12 分</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h2>技术亮点</h2>
+    <div class="grid">
+      <div class="card"><strong>Agent 驱动</strong>每个角色独立 Profile + LLM 台词</div>
+      <div class="card"><strong>情绪系统</strong>话题 → 情绪 → 影响当轮行为</div>
+      <div class="card"><strong>多人同步</strong>服务端 RoundState，lobby 选角色同房</div>
+      <div class="card"><strong>记忆设计</strong>闪记后隐藏计时，靠脑子判断开抢</div>
+    </div>
+  </section>
+
+  <section class="slide">
+    <h2>当前进度</h2>
+    <ul>
+      <li>✅ 已部署：https://hot-pot.ton-ton.fun</li>
+      <li>✅ 闪记 / 抢菜 / 拼酒 / 多人 lobby 已跑通</li>
+      <li>✅ 生肉惩罚（早抢 0 分）已实现</li>
+      <li>🔲 情绪禁夹菜 UI 还需现场说明 demo 边界</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h2>演示节奏（3 分钟）</h2>
+    <ul>
+      <li>0:00–0:10 开场钩子：「火锅局上抢过肉吗？」</li>
+      <li>0:10–0:30 闪记环节，强调记忆机制</li>
+      <li>0:30–1:30 下锅 → 话题 → 拼酒 → 抢菜（高潮）</li>
+      <li>1:30–2:00 Verdict 结算页</li>
+      <li>2:00–2:30 技术亮点 30 秒</li>
+      <li>2:30–3:00 二维码 + 收尾金句</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h2>现场准备清单</h2>
+    <ul>
+      <li>两个浏览器窗口：演示多人同房</li>
+      <li>提前开好一局 Feed 页面，避免冷启动</li>
+      <li>手机热点备用（Agent 台词需网络）</li>
+      <li>小红书笔记带 #VibeHacks #buildinpublic</li>
+    </ul>
+  </section>
+
+  <section class="slide">
+    <h1>60 秒，一桌 Agent<br>一场中国社交兵法</h1>
+    <p class="big-quote" style="margin-top:16px">火锅派对，真的会玩。</p>
+    <p class="qr">扫码试玩 → https://hot-pot.ton-ton.fun</p>
+  </section>
+
+  <div class="hint">← → 或空格翻页</div>
+  <div class="footer"><span id="idx">1</span> / 8</div>
+
+  <script>
+    const slides = [...document.querySelectorAll(".slide")];
+    let i = 0;
+    function show(n) {
+      slides[i].classList.remove("active");
+      i = (n + slides.length) % slides.length;
+      slides[i].classList.add("active");
+      document.getElementById("idx").textContent = String(i + 1);
+    }
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "ArrowRight" || e.key === " ") { e.preventDefault(); show(i + 1); }
+      if (e.key === "ArrowLeft") { e.preventDefault(); show(i - 1); }
+    });
+  </script>
+</body>
+</html>
